@@ -17,6 +17,7 @@ export function Cashier() {
   const [tables, setTables] = useState<FloorTable[] | null>(null);
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [discount, setDiscount] = useState("");
+  const [payment, setPayment] = useState<"cash" | "upi" | null>(null);
   const [printing, setPrinting] = useState(false);
   const [printNote, setPrintNote] = useState("");
   const [error, setError] = useState("");
@@ -99,6 +100,7 @@ export function Cashier() {
     setPrintNote("");
     setPreview(false);
     setDiscount("");
+    setPayment(null);
     openOrder(table.id)
       .then((next) => {
         if (ticket !== selectTicket.current) return;
@@ -129,14 +131,15 @@ export function Cashier() {
   }
 
   async function printTheBill() {
-    if (!order || order.lines.length === 0) return;
+    if (!order || order.lines.length === 0 || !payment) return;
     setPrinting(true);
     setError("");
     setPrintNote("");
     try {
-      const result = await billOrder(order.id, "cash", discount);
+      const result = await billOrder(order.id, payment, discount);
       showOrder(null);
       setDiscount("");
+      setPayment(null);
       setPrintNote(result.message);
       await load();
     } catch (caught) {
@@ -227,13 +230,21 @@ export function Cashier() {
                 ) : null}
               </div>
               <p className="total">{formatRupees(netPaise)}</p>
+              <div className="segment">
+                <button type="button" aria-pressed={payment === "cash"} disabled={printing} onClick={() => setPayment("cash")}>
+                  Cash
+                </button>
+                <button type="button" aria-pressed={payment === "upi"} disabled={printing} onClick={() => setPayment("upi")}>
+                  GPay
+                </button>
+              </div>
               <div className="pay">
                 {billPreview ? (
                   <button type="button" className="secondary" disabled={order.lines.length === 0 || printing} onClick={() => setPreview((open) => !open)}>
                     {preview ? "Hide preview" : "Preview"}
                   </button>
                 ) : null}
-                <button type="button" className="primary" disabled={order.lines.length === 0 || printing} onClick={() => void printTheBill()}>
+                <button type="button" className="primary" disabled={order.lines.length === 0 || printing || payment === null} onClick={() => void printTheBill()}>
                   {printing ? "Printing…" : "Print"}
                 </button>
               </div>
@@ -302,6 +313,12 @@ export function Cashier() {
                     <span>{discountPaise > 0 ? "Net Amount" : "Net Total"}</span>
                     <span>{formatBillAmount(netPaise)}</span>
                   </p>
+                  {payment ? (
+                    <p className="preview-row">
+                      <span>Payment</span>
+                      <span>{payment === "upi" ? "GPay" : "Cash"}</span>
+                    </p>
+                  ) : null}
                   <p className="preview-center">Thanks & Visit Again</p>
                 </div>
               ) : null}

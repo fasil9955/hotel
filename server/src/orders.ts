@@ -401,6 +401,7 @@ async function printBill(db: DatabaseSync, bill: BillRecord, order: OrderDetail,
     cgstPaise: bill.cgstPaise,
     sgstPaise: bill.sgstPaise,
     totalPaise: bill.totalPaise,
+    payment: bill.payment,
   });
   try {
     for (let copy = 0; copy < settings.billCopies; copy += 1) {

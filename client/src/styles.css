@@ -966,6 +966,11 @@ input:focus {
   margin-top: 16px;
 }
 
+.total + .segment {
+  margin-top: 16px;
+  max-width: none;
+}
+
 .pay .primary {
   flex: 1;
   height: 72px;

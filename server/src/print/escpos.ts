@@ -94,6 +94,7 @@ export function buildBillSlip(options: {
   cgstPaise: number;
   sgstPaise: number;
   totalPaise: number;
+  payment: "cash" | "upi" | "card";
 }): Buffer {
   const columns = columnsFor(options.paperWidth);
   const rule = "-".repeat(columns);
@@ -163,6 +164,8 @@ export function buildBillSlip(options: {
     pair(options.discountPaise > 0 ? "Net Amount" : "Net Total", formatPaise(options.totalPaise), columns),
     "\n",
     [ESC, 0x45, 0x00],
+    pair("Payment", options.payment === "upi" ? "GPay" : options.payment === "card" ? "Card" : "Cash", columns),
+    "\n",
     rule,
     "\n\n",
     [ESC, 0x61, 0x01],

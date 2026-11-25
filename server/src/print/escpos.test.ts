@@ -25,6 +25,7 @@ describe("test slip", () => {
       cgstPaise: 450,
       sgstPaise: 450,
       totalPaise: 17900,
+      payment: "upi",
     });
     const text = slip.toString("ascii");
     const total = text.indexOf("Total");
@@ -37,6 +38,7 @@ describe("test slip", () => {
     assert.match(text, /189\.00/);
     assert.match(text, /10\.00/);
     assert.match(text, /179\.00/);
+    assert.match(text, /GPay/);
     assert.equal(text.includes("Net Total"), false);
   });
 
