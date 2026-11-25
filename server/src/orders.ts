@@ -22,6 +22,7 @@ export type OrderDetail = {
   tableName: string;
   kind: PlaceKind;
   parcel: boolean;
+  guestName: string;
   status: "open" | "billed";
   lines: OrderLine[];
   totalPaise: number;
@@ -33,6 +34,7 @@ export type FloorTable = {
   kind: PlaceKind;
   openOrderId: number | null;
   parcel: boolean;
+  guestName: string;
   itemCount: number;
   totalPaise: number;
 };
@@ -49,6 +51,7 @@ export type BillRecord = {
   sgstPaise: number;
   totalPaise: number;
   payment: "cash" | "upi" | "card";
+  guestName: string;
   createdAt: string;
   cancellation: "" | "pending" | "accepted";
 };
@@ -76,7 +79,16 @@ export function floor(db: DatabaseSync): FloorTable[] {
     const kind: PlaceKind = table.kind === "parcel" ? "parcel" : "table";
     const order = openOrderRow(db, table.id);
     if (!order) {
-      return { id: table.id, name: table.name, kind, openOrderId: null, parcel: kind === "parcel", itemCount: 0, totalPaise: 0 };
+      return {
+        id: table.id,
+        name: table.name,
+        kind,
+        openOrderId: null,
+        parcel: kind === "parcel",
+        guestName: "",
+        itemCount: 0,
+        totalPaise: 0,
+      };
     }
     const totals = lineTotals(db, order.id);
     return {
@@ -85,6 +97,7 @@ export function floor(db: DatabaseSync): FloorTable[] {
       kind,
       openOrderId: order.id,
       parcel: kind === "parcel",
+      guestName: order.guest_name,
       itemCount: totals.count,
       totalPaise: totals.total,
     };
@@ -111,12 +124,13 @@ export function openTable(db: DatabaseSync, tableId: number): OrderDetail {
 export function getOrder(db: DatabaseSync, orderId: number): OrderDetail {
   const order = db
     .prepare(
-      `SELECT orders.id, orders.table_id, orders.status, orders.parcel, tables.name AS table_name, tables.kind AS kind
+      `SELECT orders.id, orders.table_id, orders.status, orders.parcel, orders.guest_name,
+              tables.name AS table_name, tables.kind AS kind
        FROM orders JOIN tables ON tables.id = orders.table_id
        WHERE orders.id = ?`,
     )
     .get(orderId) as
-    | { id: number; table_id: number; status: string; parcel: number; table_name: string; kind: string }
+    | { id: number; table_id: number; status: string; parcel: number; guest_name: string; table_name: string; kind: string }
     | undefined;
   if (!order) throw new HttpError("That order was not found.", 404);
   const rows = db
@@ -131,6 +145,7 @@ export function getOrder(db: DatabaseSync, orderId: number): OrderDetail {
     tableName: order.table_name,
     kind: order.kind === "parcel" ? "parcel" : "table",
     parcel: Number(order.parcel) === 1,
+    guestName: order.guest_name.trim(),
     status: order.status === "billed" ? "billed" : "open",
     lines,
     totalPaise: lines.reduce((sum, line) => sum + line.pricePaise * line.qty, 0),
@@ -155,6 +170,16 @@ export function removeLine(db: DatabaseSync, orderId: number, lineId: number, al
   if (!line) throw new HttpError("That line was not found.", 404);
   if (line.kotPrinted && !allowPrinted) throw new HttpError("The kitchen already has this item.", 400);
   db.prepare("DELETE FROM order_lines WHERE id = ? AND order_id = ?").run(lineId, orderId);
+  return getOrder(db, orderId);
+}
+
+export function setParcelName(db: DatabaseSync, orderId: number, name: string): OrderDetail {
+  const order = getOrder(db, orderId);
+  if (order.status !== "open") throw new HttpError("This parcel is already billed.", 400);
+  if (!order.parcel) throw new HttpError("A name is only for a parcel.", 400);
+  const clean = name.trim();
+  if (clean.length > 40) throw new HttpError("Keep the name to 40 characters.", 400);
+  db.prepare("UPDATE orders SET guest_name = ? WHERE id = ?").run(clean, orderId);
   return getOrder(db, orderId);
 }
 
@@ -206,8 +231,8 @@ export async function closeBill(
     .prepare(
       `INSERT INTO bills (
         order_id, table_name, subtotal_paise, discount_paise, gst_percent,
-        taxable_paise, cgst_paise, sgst_paise, total_paise, payment, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        taxable_paise, cgst_paise, sgst_paise, total_paise, payment, guest_name, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       order.id,
@@ -220,6 +245,7 @@ export async function closeBill(
       tax.sgstPaise,
       netPaise,
       payment,
+      order.guestName,
       createdAt,
     );
   db.prepare("UPDATE orders SET status = 'billed', closed_at = ? WHERE id = ?").run(createdAt, order.id);
@@ -264,6 +290,24 @@ export function todayReport(db: DatabaseSync, now = new Date()) {
     cardPaise: sum("card"),
     bills,
   };
+}
+
+export function changeBillPayment(db: DatabaseSync, billId: number, payment: unknown): BillRecord {
+  if (payment !== "cash" && payment !== "upi") throw new HttpError("Choose cash or GPay.", 400);
+  const row = db
+    .prepare(
+      `SELECT bills.*, COALESCE(cancellation_requests.status, '') AS cancel_status
+       FROM bills
+       LEFT JOIN cancellation_requests ON cancellation_requests.bill_id = bills.id
+       WHERE bills.id = ?`,
+    )
+    .get(billId) as Record<string, number | string> | undefined;
+  if (!row) throw new HttpError("That bill was not found.", 404);
+  const bill = mapBill(row);
+  if (bill.cancellation === "accepted") throw new HttpError("This bill is cancelled.", 400);
+  if (bill.payment === payment) return bill;
+  db.prepare("UPDATE bills SET payment = ? WHERE id = ?").run(payment, billId);
+  return { ...bill, payment };
 }
 
 export function requestCancellation(db: DatabaseSync, billId: number): CancellationRequest {
@@ -360,6 +404,7 @@ async function printUnprinted(
       buildKotSlip({
         hotelName: settings.hotelName,
         tableName: order.tableName,
+        guestName: order.guestName,
         parcel: order.parcel,
         paperWidth: settings.paperWidth,
         now: new Date(),
@@ -386,6 +431,7 @@ async function printBill(db: DatabaseSync, bill: BillRecord, order: OrderDetail,
     gstin: settings.gstin,
     billNo: bill.id,
     tableName: bill.tableName,
+    guestName: bill.guestName,
     parcel: order.parcel,
     paperWidth: settings.paperWidth,
     now: new Date(bill.createdAt),
@@ -431,9 +477,9 @@ function parseSendLines(input: unknown): Array<{ itemId: number; qty: number; no
   });
 }
 
-function openOrderRow(db: DatabaseSync, tableId: number): { id: number; parcel: number } | undefined {
-  return db.prepare("SELECT id, parcel FROM orders WHERE table_id = ? AND status = 'open'").get(tableId) as
-    | { id: number; parcel: number }
+function openOrderRow(db: DatabaseSync, tableId: number): { id: number; parcel: number; guest_name: string } | undefined {
+  return db.prepare("SELECT id, parcel, guest_name FROM orders WHERE table_id = ? AND status = 'open'").get(tableId) as
+    | { id: number; parcel: number; guest_name: string }
     | undefined;
 }
 
@@ -471,6 +517,7 @@ function mapBill(row: Record<string, number | string>): BillRecord {
     sgstPaise: Number(row.sgst_paise),
     totalPaise: Number(row.total_paise),
     payment: payment === "upi" || payment === "card" ? payment : "cash",
+    guestName: String(row.guest_name ?? "").trim(),
     createdAt: String(row.created_at),
     cancellation: row.cancel_status === "pending" || row.cancel_status === "accepted" ? row.cancel_status : "",
   };

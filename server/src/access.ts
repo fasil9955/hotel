@@ -13,6 +13,7 @@ export function orderRouteAllowed(method: string, pathname: string): boolean {
   if (method === "GET" && /^\/api\/orders\/\d+$/.test(pathname)) return true;
   if (method === "POST" && pathname === "/api/parcels") return true;
   if (method === "POST" && /^\/api\/orders\/\d+\/send$/.test(pathname)) return true;
+  if (method === "PUT" && /^\/api\/orders\/\d+\/name$/.test(pathname)) return true;
   if (method === "POST" && /^\/api\/orders\/\d+\/release$/.test(pathname)) return true;
   if (method === "DELETE" && /^\/api\/orders\/\d+\/lines\/\d+$/.test(pathname)) return true;
   return false;

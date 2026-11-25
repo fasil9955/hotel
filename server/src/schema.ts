@@ -40,6 +40,7 @@ export function migrate(db: DatabaseSync): void {
       table_id INTEGER NOT NULL REFERENCES tables(id),
       status TEXT NOT NULL,
       parcel INTEGER NOT NULL DEFAULT 0,
+      guest_name TEXT NOT NULL DEFAULT '',
       opened_at TEXT NOT NULL,
       closed_at TEXT
     );
@@ -66,6 +67,7 @@ export function migrate(db: DatabaseSync): void {
       sgst_paise INTEGER NOT NULL,
       total_paise INTEGER NOT NULL,
       payment TEXT NOT NULL,
+      guest_name TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL
     );
 
@@ -86,6 +88,7 @@ export function migrate(db: DatabaseSync): void {
       address TEXT NOT NULL DEFAULT '',
       aadhaar TEXT NOT NULL DEFAULT '',
       salary_paise INTEGER NOT NULL DEFAULT 0,
+      extra_paise INTEGER NOT NULL DEFAULT 0,
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL
     );
@@ -102,7 +105,10 @@ export function migrate(db: DatabaseSync): void {
       title TEXT NOT NULL,
       amount_paise INTEGER NOT NULL,
       employee_id INTEGER REFERENCES employees(id),
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      payment TEXT NOT NULL DEFAULT 'cash',
+      cash_paise INTEGER NOT NULL DEFAULT 0,
+      upi_paise INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS daily_expenses (
@@ -122,7 +128,9 @@ export function migrate(db: DatabaseSync): void {
     CREATE TABLE IF NOT EXISTS day_openings (
       day TEXT PRIMARY KEY,
       cash_paise INTEGER NOT NULL,
-      upi_paise INTEGER NOT NULL
+      upi_paise INTEGER NOT NULL,
+      counted_cash_paise INTEGER,
+      counted_upi_paise INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS day_closes (
@@ -133,8 +141,12 @@ export function migrate(db: DatabaseSync): void {
       upi_paise INTEGER NOT NULL,
       card_paise INTEGER NOT NULL,
       expense_paise INTEGER NOT NULL,
+      expense_cash_paise INTEGER NOT NULL DEFAULT 0,
+      expense_upi_paise INTEGER NOT NULL DEFAULT 0,
       opening_cash_paise INTEGER NOT NULL DEFAULT 0,
       opening_upi_paise INTEGER NOT NULL DEFAULT 0,
+      counted_cash_paise INTEGER NOT NULL DEFAULT 0,
+      counted_upi_paise INTEGER NOT NULL DEFAULT 0,
       present_count INTEGER NOT NULL,
       staff_count INTEGER NOT NULL,
       closed_at TEXT NOT NULL
@@ -145,19 +157,45 @@ export function migrate(db: DatabaseSync): void {
     db.exec("UPDATE items SET parcel_price_paise = price_paise");
   }
   addColumn(db, "orders", "parcel", "INTEGER NOT NULL DEFAULT 0");
+  addColumn(db, "orders", "guest_name", "TEXT NOT NULL DEFAULT ''");
+  addColumn(db, "bills", "guest_name", "TEXT NOT NULL DEFAULT ''");
   addColumn(db, "tables", "kind", "TEXT NOT NULL DEFAULT 'table'");
   addColumn(db, "expenses", "employee_id", "INTEGER REFERENCES employees(id)");
+  addColumn(db, "expenses", "payment", "TEXT NOT NULL DEFAULT 'cash'");
+  addColumn(db, "expenses", "cash_paise", "INTEGER NOT NULL DEFAULT 0");
+  addColumn(db, "expenses", "upi_paise", "INTEGER NOT NULL DEFAULT 0");
+  addColumn(db, "day_closes", "expense_cash_paise", "INTEGER NOT NULL DEFAULT 0");
+  addColumn(db, "day_closes", "expense_upi_paise", "INTEGER NOT NULL DEFAULT 0");
+  db.exec(`
+    UPDATE expenses SET cash_paise = amount_paise
+    WHERE payment = 'cash' AND cash_paise = 0 AND upi_paise = 0;
+    UPDATE day_closes SET expense_cash_paise = expense_paise
+    WHERE expense_cash_paise = 0 AND expense_upi_paise = 0 AND expense_paise != 0;
+  `);
   addColumn(db, "employees", "mobile", "TEXT NOT NULL DEFAULT ''");
   addColumn(db, "employees", "address", "TEXT NOT NULL DEFAULT ''");
   addColumn(db, "employees", "aadhaar", "TEXT NOT NULL DEFAULT ''");
   addColumn(db, "employees", "salary_paise", "INTEGER NOT NULL DEFAULT 0");
+  addColumn(db, "employees", "extra_paise", "INTEGER NOT NULL DEFAULT 0");
   addColumn(db, "day_closes", "opening_cash_paise", "INTEGER NOT NULL DEFAULT 0");
   addColumn(db, "day_closes", "opening_upi_paise", "INTEGER NOT NULL DEFAULT 0");
+  addColumn(db, "day_openings", "counted_cash_paise", "INTEGER");
+  addColumn(db, "day_openings", "counted_upi_paise", "INTEGER");
+  if (addColumn(db, "day_closes", "counted_cash_paise", "INTEGER NOT NULL DEFAULT 0")) {
+    addColumn(db, "day_closes", "counted_upi_paise", "INTEGER NOT NULL DEFAULT 0");
+    db.exec(`
+      UPDATE day_closes SET
+        counted_cash_paise = opening_cash_paise + cash_paise - expense_cash_paise,
+        counted_upi_paise = opening_upi_paise + upi_paise - expense_upi_paise
+    `);
+  } else {
+    addColumn(db, "day_closes", "counted_upi_paise", "INTEGER NOT NULL DEFAULT 0");
+  }
 }
 
 function addColumn(
   db: DatabaseSync,
-  table: "items" | "orders" | "tables" | "expenses" | "employees" | "day_closes",
+  table: "items" | "orders" | "tables" | "expenses" | "employees" | "day_closes" | "day_openings" | "bills",
   column: string,
   definition: string,
 ): boolean {

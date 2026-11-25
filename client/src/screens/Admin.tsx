@@ -5,6 +5,7 @@ import {
   closeTheDay,
   getCancellationRequests,
   getDayClose,
+  saveDayClosing,
   getEmployeeAccounts,
   getEmployeeLedger,
   printDayReport,
@@ -17,6 +18,7 @@ import {
   type DayCloseView,
   type EmployeeAccount,
   type EmployeeLedger,
+  type Expense,
 } from "../api";
 import { formatRupees } from "../money";
 
@@ -113,19 +115,24 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
   const [accepting, setAccepting] = useState<number | null>(null);
   const [openingCash, setOpeningCash] = useState("");
   const [openingUpi, setOpeningUpi] = useState("");
+  const [closingCash, setClosingCash] = useState("");
+  const [closingUpi, setClosingUpi] = useState("");
   const [openingReady, setOpeningReady] = useState(false);
+  const [closingReady, setClosingReady] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<EmployeeAccount | null>(null);
   const [accountId, setAccountId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<"save" | "close" | "print" | null>(null);
   const [printNote, setPrintNote] = useState<{ printed: boolean; message: string } | null>(null);
+  const [selectedDay, setSelectedDay] = useState("");
 
   useEffect(() => {
     Promise.all([getEmployeeAccounts(token), getDayClose(token), getCancellationRequests(token)])
       .then(([staff, day, pending]) => {
         setEmployees(staff);
         setClose(day);
+        setSelectedDay(day.today);
         setRequests(pending);
       })
       .catch((caught: unknown) => {
@@ -152,15 +159,24 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
     setOpeningReady(true);
   }, [close, openingReady]);
 
-  async function add(person: { name: string; mobile: string; address: string; salary: string }) {
+  useEffect(() => {
+    if (!close || closingReady) return;
+    const source = close.closed ?? close.live;
+    setClosingCash(rupeeInput(source.countedSet ? source.countedCashPaise : source.closingCashPaise));
+    setClosingUpi(rupeeInput(source.countedSet ? source.countedUpiPaise : source.closingUpiPaise));
+    setClosingReady(true);
+  }, [close, closingReady]);
+
+  async function add(person: { name: string; mobile: string; address: string; salary: string; extra: string }) {
     setBusy("save");
     setError("");
     try {
-      await addEmployee(token, { ...person, aadhaar: "", salaryRupees: person.salary });
+      await addEmployee(token, { ...person, aadhaar: "", salaryRupees: person.salary, extraRupees: person.extra });
       setAdding(false);
-      const [staff, day] = await Promise.all([getEmployeeAccounts(token), getDayClose(token)]);
+      const [staff, day] = await Promise.all([getEmployeeAccounts(token), getDayClose(token, selectedDay || undefined)]);
       setEmployees(staff);
       setClose(day);
+      setSelectedDay(day.day);
     } catch (caught) {
       if (locked(caught)) onLock();
       else setError(text(caught));
@@ -169,16 +185,22 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
     }
   }
 
-  async function saveEdit(person: { name: string; mobile: string; address: string; salary: string }) {
+  async function saveEdit(person: { name: string; mobile: string; address: string; salary: string; extra: string }) {
     if (!editing) return;
     setBusy("save");
     setError("");
     try {
-      await updateEmployee(token, editing.id, { ...person, aadhaar: "", salaryRupees: person.salary });
+      await updateEmployee(token, editing.id, {
+        ...person,
+        aadhaar: "",
+        salaryRupees: person.salary,
+        extraRupees: person.extra,
+      });
       setEditing(null);
-      const [staff, day] = await Promise.all([getEmployeeAccounts(token), getDayClose(token)]);
+      const [staff, day] = await Promise.all([getEmployeeAccounts(token), getDayClose(token, selectedDay || undefined)]);
       setEmployees(staff);
       setClose(day);
+      setSelectedDay(day.day);
     } catch (caught) {
       if (locked(caught)) onLock();
       else setError(text(caught));
@@ -190,9 +212,10 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
     setError("");
     try {
       await removeEmployee(token, id);
-      const [staff, day] = await Promise.all([getEmployeeAccounts(token), getDayClose(token)]);
+      const [staff, day] = await Promise.all([getEmployeeAccounts(token), getDayClose(token, selectedDay || undefined)]);
       setEmployees(staff);
       setClose(day);
+      setSelectedDay(day.day);
     } catch (caught) {
       if (locked(caught)) onLock();
       else setError(text(caught));
@@ -204,9 +227,10 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
     setError("");
     try {
       await acceptCancellation(token, id);
-      const [pending, day] = await Promise.all([getCancellationRequests(token), getDayClose(token)]);
+      const [pending, day] = await Promise.all([getCancellationRequests(token), getDayClose(token, selectedDay || undefined)]);
       setRequests(pending);
       setClose(day);
+      setSelectedDay(day.day);
     } catch (caught) {
       if (locked(caught)) onLock();
       else setError(text(caught));
@@ -216,7 +240,7 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
   }
 
   async function keepOpening() {
-    if (close?.closed) return;
+    if (!viewingToday || close?.closed) return;
     if (rupeePaise(openingCash) === null || rupeePaise(openingUpi) === null) {
       setError("Enter the opening balance in rupees, such as 500 or 500.50.");
       return;
@@ -230,19 +254,49 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
     }
   }
 
+  async function chooseDay(day: string) {
+    const next = day || close?.today;
+    if (!next) return;
+    setSelectedDay(next);
+    setError("");
+    setPrintNote(null);
+    try {
+      setClose(await getDayClose(token, next));
+    } catch (caught) {
+      if (locked(caught)) onLock();
+      else setError(text(caught));
+    }
+  }
+
+  async function keepClosing() {
+    if (!viewingToday || close?.closed) return;
+    if (rupeePaise(closingCash) === null || rupeePaise(closingUpi) === null) {
+      setError("Enter the closing balance in rupees, such as 500 or 500.50.");
+      return;
+    }
+    setError("");
+    try {
+      await saveDayClosing(token, closingCash.trim() || "0", closingUpi.trim() || "0");
+    } catch (caught) {
+      if (locked(caught)) onLock();
+      else setError(text(caught));
+    }
+  }
+
   async function finish() {
     if (!window.confirm("Close today? This saves the sales, expenses, and attendance.")) return;
     setBusy("close");
     setError("");
     try {
-      const saved = await closeTheDay(token, {
+      await closeTheDay(token, {
         cashRupees: openingCash.trim() || "0",
         upiRupees: openingUpi.trim() || "0",
+        closingCashRupees: closingCash.trim() || "0",
+        closingUpiRupees: closingUpi.trim() || "0",
       });
-      setClose({
-        closed: saved,
-        live: saved,
-      });
+      const day = await getDayClose(token, selectedDay || undefined);
+      setClose(day);
+      setSelectedDay(day.day);
     } catch (caught) {
       if (locked(caught)) onLock();
       else setError(text(caught));
@@ -259,6 +313,8 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
       const result = await printDayReport(token, {
         cashRupees: openingCash.trim() || "0",
         upiRupees: openingUpi.trim() || "0",
+        closingCashRupees: closingCash.trim() || "0",
+        closingUpiRupees: closingUpi.trim() || "0",
       });
       setPrintNote(result);
     } catch (caught) {
@@ -270,6 +326,7 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
   }
 
   const figures = close?.closed ?? close?.live ?? null;
+  const viewingToday = close != null && close.day === close.today;
   const pending = requests?.filter((request) => request.status === "pending") ?? [];
 
   return (
@@ -278,7 +335,9 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
       {page === "employees" ? (
       <section className="panel">
         <h1>Employee management</h1>
-        <p className="hint">Balance is this month's salary minus the money given this month.</p>
+        <p className="hint">
+          This month's pay is the monthly salary for each day marked present. Added balance is an extra amount. Balance is this month's pay plus the added balance, minus the money given this month.
+        </p>
         <div className="row-actions">
           <button
             type="button"
@@ -299,6 +358,10 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
                 <div className="account-head">
                   <strong>{employee.name}</strong>
                   <span>Salary {formatRupees(employee.salaryPaise)}</span>
+                  <span>
+                    This month {formatRupees(employee.earnedPaise)} · {employee.presentDays} present
+                  </span>
+                  <span>Added {formatRupees(employee.extraPaise)}</span>
                   <span>{formatRupees(employee.givenMonthPaise)} given</span>
                   <span>Balance {formatRupees(employee.balancePaise)}</span>
                 </div>
@@ -342,31 +405,49 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
       ) : (
       <section className="panel">
         <h1>Day close</h1>
+        <label className="day-picker">
+          Date
+          <input
+            type="date"
+            value={selectedDay}
+            max={close?.today ?? selectedDay}
+            onChange={(event) => void chooseDay(event.target.value)}
+          />
+        </label>
         {close?.closed ? (
           <p className="lede">
-            Closed at {new Date(close.closed.closedAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}
+            Closed at {new Date(close.closed.closedAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
           </p>
-        ) : (
-          <p className="hint">Expenses come out of cash. GPay stays in GPay. The tally checks that both sides match.</p>
-        )}
-        {figures && openingReady ? (
+        ) : viewingToday ? (
+          <p className="hint">Type the closing cash and GPay you counted. The tally compares that with the books.</p>
+        ) : close ? (
+          <p className="hint">This day was not closed.</p>
+        ) : null}
+        {figures && openingReady && closingReady ? (
           <DayBook
             figures={figures}
-            closed={Boolean(close?.closed)}
+            expenses={close?.expenses ?? []}
+            closed={Boolean(close?.closed) || !viewingToday}
             openingCash={openingCash}
             openingUpi={openingUpi}
+            closingCash={closingCash}
+            closingUpi={closingUpi}
             onCash={setOpeningCash}
             onUpi={setOpeningUpi}
-            onSave={() => void keepOpening()}
+            onClosingCash={setClosingCash}
+            onClosingUpi={setClosingUpi}
+            onSaveOpening={() => void keepOpening()}
+            onSaveClosing={() => void keepClosing()}
           />
         ) : (
           <p className="lede">Loading…</p>
         )}
+        {viewingToday ? (
         <div className="row-actions">
           <button
             type="button"
             className="secondary"
-            disabled={busy !== null || !close || !openingReady || rupeePaise(openingCash) === null || rupeePaise(openingUpi) === null}
+            disabled={busy !== null || !close || !openingReady || !closingReady || rupeePaise(openingCash) === null || rupeePaise(openingUpi) === null || rupeePaise(closingCash) === null || rupeePaise(closingUpi) === null}
             onClick={() => void printReport()}
           >
             {busy === "print" ? "Printing…" : "Print report"}
@@ -375,13 +456,14 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
             <button
               type="button"
               className="primary"
-              disabled={busy !== null || !close || !openingReady || requests === null || pending.length > 0 || rupeePaise(openingCash) === null || rupeePaise(openingUpi) === null}
+              disabled={busy !== null || !close || !openingReady || !closingReady || requests === null || pending.length > 0 || rupeePaise(openingCash) === null || rupeePaise(openingUpi) === null || rupeePaise(closingCash) === null || rupeePaise(closingUpi) === null}
               onClick={() => void finish()}
             >
               {busy === "close" ? "Closing…" : "Close day"}
             </button>
           )}
         </div>
+        ) : null}
         {printNote ? <p className={printNote.printed ? "note ok" : "note bad"}>{printNote.message}</p> : null}
       </section>
       )}
@@ -397,7 +479,7 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
       {adding ? (
         <EmployeeForm
           title="Add employee"
-          initial={{ name: "", mobile: "", address: "", salary: "" }}
+          initial={{ name: "", mobile: "", address: "", salary: "", extra: "" }}
           busy={busy === "save"}
           error={error}
           onClose={() => {
@@ -415,6 +497,7 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
             mobile: editing.mobile,
             address: editing.address,
             salary: rupeeInput(editing.salaryPaise),
+            extra: rupeeInput(editing.extraPaise),
           }}
           busy={busy === "save"}
           error={error}
@@ -476,16 +559,17 @@ function EmployeeForm({
   onSave,
 }: {
   title: string;
-  initial: { name: string; mobile: string; address: string; salary: string };
+  initial: { name: string; mobile: string; address: string; salary: string; extra: string };
   busy: boolean;
   error: string;
   onClose: () => void;
-  onSave: (person: { name: string; mobile: string; address: string; salary: string }) => void;
+  onSave: (person: { name: string; mobile: string; address: string; salary: string; extra: string }) => void;
 }) {
   const [name, setName] = useState(initial.name);
   const [mobile, setMobile] = useState(initial.mobile);
   const [address, setAddress] = useState(initial.address);
   const [salary, setSalary] = useState(initial.salary);
+  const [extra, setExtra] = useState(initial.extra);
 
   return (
     <div
@@ -501,7 +585,7 @@ function EmployeeForm({
         aria-labelledby="employee-form-title"
         onSubmit={(event) => {
           event.preventDefault();
-          onSave({ name, mobile, address, salary });
+          onSave({ name, mobile, address, salary, extra });
         }}
       >
         <h2 id="employee-form-title">{title}</h2>
@@ -526,6 +610,15 @@ function EmployeeForm({
               value={salary}
               placeholder="0"
               onChange={(event) => setSalary(event.target.value)}
+            />
+          </label>
+          <label>
+            Added balance
+            <input
+              inputMode="decimal"
+              value={extra}
+              placeholder="0"
+              onChange={(event) => setExtra(event.target.value)}
             />
           </label>
         </div>
@@ -576,7 +669,8 @@ function AccountView({
         <h2 id="account-title">{ledger ? `${ledger.name}'s account` : "Account"}</h2>
         {ledger ? (
           <p className="hint">
-            Salary {formatRupees(ledger.salaryPaise)} · Balance {formatRupees(ledger.balancePaise)}
+            Salary {formatRupees(ledger.salaryPaise)} · This month {formatRupees(ledger.earnedPaise)} · Added{" "}
+            {formatRupees(ledger.extraPaise)} · Balance {formatRupees(ledger.balancePaise)}
           </p>
         ) : null}
         {error ? <p className="note bad">{error}</p> : null}
@@ -612,34 +706,49 @@ function AccountView({
 
 function DayBook({
   figures,
+  expenses,
   closed,
   openingCash,
   openingUpi,
+  closingCash,
+  closingUpi,
   onCash,
   onUpi,
-  onSave,
+  onClosingCash,
+  onClosingUpi,
+  onSaveOpening,
+  onSaveClosing,
 }: {
   figures: Omit<DayClose, "day" | "closedAt">;
+  expenses: Expense[];
   closed: boolean;
   openingCash: string;
   openingUpi: string;
+  closingCash: string;
+  closingUpi: string;
   onCash: (value: string) => void;
   onUpi: (value: string) => void;
-  onSave: () => void;
+  onClosingCash: (value: string) => void;
+  onClosingUpi: (value: string) => void;
+  onSaveOpening: () => void;
+  onSaveClosing: () => void;
 }) {
-  const cash = closed ? figures.openingCashPaise : (rupeePaise(openingCash) ?? 0);
-  const upi = closed ? figures.openingUpiPaise : (rupeePaise(openingUpi) ?? 0);
-  const closingCash = cash + figures.cashPaise - figures.expensePaise;
-  const closingUpi = upi + figures.upiPaise;
+  const cash = closed || figures.openingLocked ? figures.openingCashPaise : (rupeePaise(openingCash) ?? 0);
+  const upi = closed || figures.openingLocked ? figures.openingUpiPaise : (rupeePaise(openingUpi) ?? 0);
+  const bookCash = cash + figures.cashPaise - figures.expenseCashPaise;
+  const bookUpi = upi + figures.upiPaise - figures.expenseUpiPaise;
+  const countedCash = closed ? figures.countedCashPaise : (rupeePaise(closingCash) ?? 0);
+  const countedUpi = closed ? figures.countedUpiPaise : (rupeePaise(closingUpi) ?? 0);
   const expected = cash + upi + figures.salesPaise - figures.expensePaise;
-  const compared = closingCash + closingUpi + figures.cardPaise;
+  const compared = countedCash + countedUpi + figures.cardPaise;
   const tallied = expected === compared;
-  const openingInvalid = !closed && (rupeePaise(openingCash) === null || rupeePaise(openingUpi) === null);
+  const openingInvalid = !closed && !figures.openingLocked && (rupeePaise(openingCash) === null || rupeePaise(openingUpi) === null);
+  const closingInvalid = !closed && (rupeePaise(closingCash) === null || rupeePaise(closingUpi) === null);
   return (
     <div className="day-book">
       <section>
         <h2>Opening balance</h2>
-        {closed ? (
+        {closed || figures.openingLocked ? (
           <>
             <p className="book-row">
               <span>GPay</span>
@@ -649,17 +758,19 @@ function DayBook({
               <span>Cash</span>
               <strong>{formatRupees(cash)}</strong>
             </p>
+            {figures.openingLocked && !closed ? <p className="hint">From the previous day's closing balance.</p> : null}
           </>
         ) : (
           <>
             <label className="book-row">
               GPay
-              <input inputMode="decimal" value={openingUpi} onChange={(event) => onUpi(event.target.value)} onBlur={onSave} />
+              <input inputMode="decimal" value={openingUpi} onChange={(event) => onUpi(event.target.value)} onBlur={onSaveOpening} />
             </label>
             <label className="book-row">
               Cash
-              <input inputMode="decimal" value={openingCash} onChange={(event) => onCash(event.target.value)} onBlur={onSave} />
+              <input inputMode="decimal" value={openingCash} onChange={(event) => onCash(event.target.value)} onBlur={onSaveOpening} />
             </label>
+            <p className="hint">Type this for the first day. After a day is closed, the next opening is that closing balance.</p>
           </>
         )}
       </section>
@@ -673,19 +784,54 @@ function DayBook({
       <section>
         <h2>Expenses</h2>
         <p className="book-row">
-          <span>Paid from cash</span>
-          <strong>{formatRupees(figures.expensePaise)}</strong>
+          <span>Cash</span>
+          <strong>{formatRupees(figures.expenseCashPaise)}</strong>
         </p>
-      </section>
-      <section>
-        <h2>Cash balance</h2>
         <p className="book-row">
           <span>GPay</span>
-          <strong>{formatRupees(closingUpi)}</strong>
+          <strong>{formatRupees(figures.expenseUpiPaise)}</strong>
         </p>
-        <p className="book-row">
-          <span>Cash</span>
-          <strong>{formatRupees(closingCash)}</strong>
+        {expenses.length === 0 ? <p className="hint">No expenses this day.</p> : null}
+        <ul className="account-lines">
+          {expenses.map((expense) => (
+            <li key={expense.id}>
+              <span>
+                {expense.employeeName ? `${expense.title} · ${expense.employeeName}` : expense.title}
+                {" · "}
+                {paidWith(expense)}
+              </span>
+              <strong>{formatRupees(expense.amountPaise)}</strong>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section>
+        <h2>Closing balance</h2>
+        {closed ? (
+          <>
+            <p className="book-row">
+              <span>GPay</span>
+              <strong>{formatRupees(countedUpi)}</strong>
+            </p>
+            <p className="book-row">
+              <span>Cash</span>
+              <strong>{formatRupees(countedCash)}</strong>
+            </p>
+          </>
+        ) : (
+          <>
+            <label className="book-row">
+              GPay
+              <input inputMode="decimal" value={closingUpi} onChange={(event) => onClosingUpi(event.target.value)} onBlur={onSaveClosing} />
+            </label>
+            <label className="book-row">
+              Cash
+              <input inputMode="decimal" value={closingCash} onChange={(event) => onClosingCash(event.target.value)} onBlur={onSaveClosing} />
+            </label>
+          </>
+        )}
+        <p className="hint">
+          Books: GPay {formatRupees(bookUpi)} · Cash {formatRupees(bookCash)}
         </p>
       </section>
       <section>
@@ -695,11 +841,13 @@ function DayBook({
           <strong>{formatRupees(expected)}</strong>
         </p>
         <p className="book-row">
-          <span>{figures.cardPaise > 0 ? "Cash balance + card" : "Cash balance"}</span>
+          <span>{figures.cardPaise > 0 ? "Closing balance + card" : "Closing balance"}</span>
           <strong>{formatRupees(compared)}</strong>
         </p>
         {openingInvalid ? (
           <p className="note bad">Enter the opening balance in rupees.</p>
+        ) : closingInvalid ? (
+          <p className="note bad">Enter the closing balance in rupees.</p>
         ) : tallied ? (
           <p className="note ok">Tallied</p>
         ) : (
@@ -713,21 +861,31 @@ function DayBook({
   );
 }
 
+function paidWith(expense: Pick<Expense, "payment" | "cashPaise" | "upiPaise">): string {
+  if (expense.payment === "upi") return "GPay";
+  if (expense.payment === "mix") return `Cash ${formatRupees(expense.cashPaise)} · GPay ${formatRupees(expense.upiPaise)}`;
+  return "Cash";
+}
+
 function rupeeInput(paise: number): string {
+  const sign = paise < 0 ? "-" : "";
   const abs = Math.abs(Math.round(paise));
   const rupees = Math.floor(abs / 100);
   const fraction = abs % 100;
-  return fraction === 0 ? String(rupees) : `${rupees}.${String(fraction).padStart(2, "0")}`;
+  const text = fraction === 0 ? String(rupees) : `${rupees}.${String(fraction).padStart(2, "0")}`;
+  return `${sign}${text}`;
 }
 
 function rupeePaise(value: string): number | null {
   const text = value.trim();
   if (text === "") return 0;
-  if (!/^\d+(\.\d{1,2})?$/.test(text)) return null;
-  const [rupees, fraction = ""] = text.split(".");
+  const negative = text.startsWith("-");
+  const body = negative ? text.slice(1) : text;
+  if (!/^\d+(\.\d{1,2})?$/.test(body)) return null;
+  const [rupees, fraction = ""] = body.split(".");
   const paise = Number(rupees) * 100 + Number(fraction.padEnd(2, "0"));
   if (paise > 1_000_000_00) return null;
-  return paise;
+  return negative ? -paise : paise;
 }
 
 function monthLabel(month: string): string {

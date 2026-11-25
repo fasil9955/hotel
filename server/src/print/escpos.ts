@@ -44,6 +44,7 @@ export function buildTestSlip(options: {
 export function buildKotSlip(options: {
   hotelName: string;
   tableName: string;
+  guestName?: string;
   parcel?: boolean;
   paperWidth: PaperWidth;
   now: Date;
@@ -62,6 +63,7 @@ export function buildKotSlip(options: {
     ascii(options.parcel ? options.tableName : `Table ${options.tableName}`),
     "\n",
     ...(options.parcel ? [[ESC, 0x45, 0x01] as number[], "PARCEL\n", [ESC, 0x45, 0x00] as number[]] : []),
+    ...(options.guestName?.trim() ? [ascii(options.guestName.trim()), "\n"] : []),
     ascii(formatWhen(options.now)),
     "\n",
     [ESC, 0x61, 0x00],
@@ -83,6 +85,7 @@ export function buildBillSlip(options: {
   gstin?: string;
   billNo: number;
   tableName: string;
+  guestName?: string;
   parcel?: boolean;
   paperWidth: PaperWidth;
   now: Date;
@@ -129,6 +132,7 @@ export function buildBillSlip(options: {
       columns,
     ),
     "\n",
+    ...(options.guestName?.trim() ? [pair("Name", options.guestName.trim(), columns), "\n"] : []),
     rule,
     "\n",
     moneyRow("Item", "Rate", "Qty", "Amount", columns),
@@ -184,6 +188,8 @@ export function buildDayReport(options: {
   openingUpiPaise: number;
   salesPaise: number;
   expensePaise: number;
+  expenseCashPaise: number;
+  expenseUpiPaise: number;
   closingCashPaise: number;
   closingUpiPaise: number;
   cardPaise: number;
@@ -219,9 +225,13 @@ export function buildDayReport(options: {
     "\n",
     pair("Expenses", formatPaise(options.expensePaise), columns),
     "\n",
+    pair("Cash", formatPaise(options.expenseCashPaise), columns),
+    "\n",
+    pair("GPay", formatPaise(options.expenseUpiPaise), columns),
+    "\n",
     rule,
     "\n",
-    "Cash balance\n",
+    "Closing balance\n",
     pair("GPay", formatPaise(options.closingUpiPaise), columns),
     "\n",
     pair("Cash", formatPaise(options.closingCashPaise), columns),
@@ -235,7 +245,7 @@ export function buildDayReport(options: {
     "\n",
     pair("Opening + business - exp", formatPaise(expected), columns),
     "\n",
-    pair(options.cardPaise > 0 ? "Balance + card" : "Cash balance", formatPaise(balance), columns),
+    pair(options.cardPaise > 0 ? "Closing + card" : "Closing balance", formatPaise(balance), columns),
     "\n",
     [ESC, 0x45, 0x01],
     tallied ? "TALLIED\n" : pair("Difference", formatPaise(expected - balance), columns) + "\n",

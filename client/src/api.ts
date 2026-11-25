@@ -45,6 +45,7 @@ export type FloorTable = {
   kind: "table" | "parcel";
   openOrderId: number | null;
   parcel: boolean;
+  guestName: string;
   itemCount: number;
   totalPaise: number;
 };
@@ -64,6 +65,7 @@ export type OrderDetail = {
   tableName: string;
   kind: "table" | "parcel";
   parcel: boolean;
+  guestName: string;
   status: "open" | "billed";
   lines: OrderLine[];
   totalPaise: number;
@@ -83,6 +85,7 @@ export type Bill = {
   sgstPaise: number;
   totalPaise: number;
   payment: "cash" | "upi" | "card";
+  guestName: string;
   createdAt: string;
   cancellation: "" | "pending" | "accepted";
 };
@@ -235,6 +238,10 @@ export async function getOrder(orderId: number): Promise<OrderDetail | null> {
   }
 }
 
+export function setParcelName(orderId: number, name: string): Promise<OrderDetail> {
+  return api(`/api/orders/${orderId}/name`, { method: "PUT", ...json({ name }) });
+}
+
 export function releaseOrder(orderId: number): Promise<void> {
   return api(`/api/orders/${orderId}/release`, { method: "POST" });
 }
@@ -290,6 +297,10 @@ export function getToday(): Promise<TodayReport> {
   return api("/api/reports/today");
 }
 
+export function changeBillPayment(billId: number, payment: "cash" | "upi"): Promise<Bill> {
+  return api(`/api/bills/${billId}/payment`, { method: "PUT", ...json({ payment }) });
+}
+
 export function installStartup(): Promise<{ shortcut: string }> {
   return api("/api/system/startup", { method: "POST" });
 }
@@ -304,6 +315,9 @@ export type EmployeeLedger = {
   mobile: string;
   address: string;
   salaryPaise: number;
+  earnedPaise: number;
+  presentDays: number;
+  extraPaise: number;
   givenPaise: number;
   balancePaise: number;
   months: Array<{
@@ -324,6 +338,9 @@ export type EmployeeAccount = {
   salaryPaise: number;
   givenPaise: number;
   givenMonthPaise: number;
+  earnedPaise: number;
+  presentDays: number;
+  extraPaise: number;
   balancePaise: number;
   entries: AccountEntry[];
 };
@@ -332,6 +349,9 @@ export type Expense = {
   id: number;
   title: string;
   amountPaise: number;
+  cashPaise: number;
+  upiPaise: number;
+  payment: "cash" | "upi" | "mix";
   createdAt: string;
   employeeId: number | null;
   employeeName: string;
@@ -339,9 +359,16 @@ export type Expense = {
 
 export type DailyExpense = { id: number; title: string; lastAmountPaise: number; todayPaise: number };
 
-export type ExpenseList = { expenses: Expense[]; totalPaise: number };
+export type ExpenseList = { expenses: Expense[]; totalPaise: number; cashPaise: number; upiPaise: number };
 
-export type AttendanceRow = { employeeId: number; name: string; status: "present" | "absent" | "" };
+export type AttendanceMark = "present" | "absent" | "";
+
+export type MonthAttendance = {
+  month: string;
+  today: string;
+  days: string[];
+  rows: Array<{ employeeId: number; name: string; marks: AttendanceMark[] }>;
+};
 
 export type DayClose = {
   day: string;
@@ -351,10 +378,16 @@ export type DayClose = {
   upiPaise: number;
   cardPaise: number;
   expensePaise: number;
+  expenseCashPaise: number;
+  expenseUpiPaise: number;
   openingCashPaise: number;
   openingUpiPaise: number;
   closingCashPaise: number;
   closingUpiPaise: number;
+  countedCashPaise: number;
+  countedUpiPaise: number;
+  countedSet: boolean;
+  openingLocked: boolean;
   tallyPaise: number;
   presentCount: number;
   staffCount: number;
@@ -362,8 +395,12 @@ export type DayClose = {
 };
 
 export type DayCloseView = {
+  day: string;
+  today: string;
+  closedDays: string[];
   closed: DayClose | null;
   live: Omit<DayClose, "day" | "closedAt">;
+  expenses: Expense[];
 };
 
 export function unlockAdmin(pin: string): Promise<{ token: string }> {
@@ -380,7 +417,7 @@ export function getEmployeeAccounts(token: string): Promise<EmployeeAccount[]> {
 
 export function addEmployee(
   token: string,
-  person: { name: string; mobile: string; address: string; aadhaar: string; salaryRupees: string },
+  person: { name: string; mobile: string; address: string; aadhaar: string; salaryRupees: string; extraRupees: string },
 ): Promise<Employee> {
   return api("/api/employees", { method: "POST", ...adminJson(token, person) });
 }
@@ -388,7 +425,7 @@ export function addEmployee(
 export function updateEmployee(
   token: string,
   id: number,
-  person: { name: string; mobile: string; address: string; aadhaar: string; salaryRupees: string },
+  person: { name: string; mobile: string; address: string; aadhaar: string; salaryRupees: string; extraRupees: string },
 ): Promise<Employee> {
   return api(`/api/employees/${id}`, { method: "PUT", ...adminJson(token, person) });
 }
@@ -401,11 +438,11 @@ export function removeEmployee(token: string, id: number): Promise<{ ok: boolean
   return api(`/api/employees/${id}`, { method: "DELETE", ...adminJson(token, null) });
 }
 
-export function getAttendance(): Promise<AttendanceRow[]> {
+export function getAttendance(): Promise<MonthAttendance> {
   return api("/api/attendance");
 }
 
-export function markAttendance(employeeId: number, status: "present" | "absent"): Promise<AttendanceRow[]> {
+export function markAttendance(employeeId: number, status: "present" | "absent"): Promise<MonthAttendance> {
   return api("/api/attendance", { method: "POST", ...json({ employeeId, status }) });
 }
 
@@ -413,8 +450,24 @@ export function getExpenses(): Promise<ExpenseList> {
   return api("/api/expenses");
 }
 
-export function addExpense(title: string, amountRupees: string, employeeId?: number): Promise<Expense> {
-  return api("/api/expenses", { method: "POST", ...json({ title, amountRupees, employeeId: employeeId ?? null }) });
+export function addExpense(
+  title: string,
+  amountRupees: string,
+  payment: "cash" | "upi" | "mix",
+  employeeId?: number,
+  parts?: { cashRupees: string; upiRupees: string },
+): Promise<Expense> {
+  return api("/api/expenses", {
+    method: "POST",
+    ...json({
+      title,
+      amountRupees,
+      payment,
+      employeeId: employeeId ?? null,
+      cashRupees: parts?.cashRupees ?? "",
+      upiRupees: parts?.upiRupees ?? "",
+    }),
+  });
 }
 
 export function removeExpense(id: number): Promise<{ ok: boolean }> {
@@ -437,19 +490,27 @@ export function saveDayOpening(token: string, cashRupees: string, upiRupees: str
   return api("/api/day-close/opening", { method: "PUT", ...adminJson(token, { cashRupees, upiRupees }) });
 }
 
-export function getDayClose(token: string): Promise<DayCloseView> {
-  return api("/api/day-close", adminJson(token, null));
+export function saveDayClosing(token: string, cashRupees: string, upiRupees: string): Promise<{ countedCashPaise: number; countedUpiPaise: number }> {
+  return api("/api/day-close/closing", { method: "PUT", ...adminJson(token, { cashRupees, upiRupees }) });
 }
 
-export function closeTheDay(token: string, opening: { cashRupees: string; upiRupees: string }): Promise<DayClose> {
-  return api("/api/day-close", { method: "POST", ...adminJson(token, opening) });
+export function getDayClose(token: string, day?: string): Promise<DayCloseView> {
+  const query = day ? `?day=${encodeURIComponent(day)}` : "";
+  return api(`/api/day-close${query}`, adminJson(token, null));
+}
+
+export function closeTheDay(
+  token: string,
+  amounts: { cashRupees: string; upiRupees: string; closingCashRupees: string; closingUpiRupees: string },
+): Promise<DayClose> {
+  return api("/api/day-close", { method: "POST", ...adminJson(token, amounts) });
 }
 
 export function printDayReport(
   token: string,
-  opening: { cashRupees: string; upiRupees: string },
+  amounts: { cashRupees: string; upiRupees: string; closingCashRupees: string; closingUpiRupees: string },
 ): Promise<{ printed: boolean; message: string }> {
-  return api("/api/day-close/print", { method: "POST", ...adminJson(token, opening) });
+  return api("/api/day-close/print", { method: "POST", ...adminJson(token, amounts) });
 }
 
 function adminJson(token: string, body: unknown): RequestInit {

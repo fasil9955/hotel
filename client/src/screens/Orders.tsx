@@ -17,6 +17,7 @@ import {
 } from "../api";
 import { useSync } from "../live";
 import { formatRupees } from "../money";
+import { ParcelName } from "./ParcelName";
 
 type CartLine = { key: string; itemId: number; name: string; pricePaise: number; qty: number; note: string };
 
@@ -210,6 +211,7 @@ export function Orders({ tablet = false }: { tablet?: boolean }) {
               <div key={table.id} className={table.openOrderId ? "table-tile busy parcel-card" : "table-tile parcel-card"}>
                 <button type="button" className="tile-open" onClick={() => void openTable(table)}>
                   <strong>{table.name}</strong>
+                  {table.guestName ? <span>{table.guestName}</span> : null}
                   <span>{table.openOrderId ? `${formatRupees(table.totalPaise)} · ${table.itemCount}` : "Free"}</span>
                 </button>
                 {tablet || table.openOrderId ? null : (
@@ -277,6 +279,7 @@ export function Orders({ tablet = false }: { tablet?: boolean }) {
         <div className="order-side">
           <section className="panel">
             {tablet ? <h1>{placeTitle(order)}</h1> : null}
+            {order.parcel ? <ParcelName order={order} onSaved={showOrder} /> : null}
             <h2>To send</h2>
             {cart.length === 0 ? (
               <p className="hint">{tablet ? "Add dishes, then send them together." : "Tap a dish to add it."}</p>

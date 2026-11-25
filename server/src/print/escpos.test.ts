@@ -65,6 +65,8 @@ describe("test slip", () => {
       openingUpiPaise: 2000,
       salesPaise: 36000,
       expensePaise: 4000,
+      expenseCashPaise: 4000,
+      expenseUpiPaise: 0,
       closingCashPaise: 82000,
       closingUpiPaise: 2000,
       cardPaise: 0,
@@ -76,7 +78,7 @@ describe("test slip", () => {
     assert.match(text, /Opening balance/);
     assert.match(text, /Total business/);
     assert.match(text, /Expenses/);
-    assert.match(text, /Cash balance/);
+    assert.match(text, /Closing balance/);
     assert.match(text, /TALLIED/);
     assert.match(text, /360\.00/);
     assert.ok(slip.includes(Buffer.from([0x1d, 0x56, 0x42, 0x00])));

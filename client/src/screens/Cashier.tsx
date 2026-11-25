@@ -12,6 +12,7 @@ import {
 } from "../api";
 import { useSync } from "../live";
 import { formatBillAmount, formatRupees } from "../money";
+import { ParcelName } from "./ParcelName";
 
 export function Cashier() {
   const [tables, setTables] = useState<FloorTable[] | null>(null);
@@ -171,6 +172,7 @@ export function Cashier() {
           ) : (
             <>
               <h1>{order.kind === "parcel" ? order.tableName : `Table ${order.tableName}`}</h1>
+              {order.kind === "parcel" ? <ParcelName order={order} onSaved={showOrder} /> : null}
               {order.lines.length === 0 ? <p className="hint">No items on this order yet.</p> : null}
               <ul className="order-lines">
                 {order.lines.map((line) => (
@@ -269,6 +271,12 @@ export function Cashier() {
                     <span>{order.kind === "parcel" ? order.tableName : `Table No : table ${order.tableName}`}</span>
                     <span>{order.kind === "parcel" ? "Parcel" : "Restaurant"}</span>
                   </p>
+                  {order.guestName ? (
+                    <p className="preview-row">
+                      <span>Name</span>
+                      <span>{order.guestName}</span>
+                    </p>
+                  ) : null}
                   <hr />
                   <p className="preview-cols preview-head">
                     <span>Item</span>
@@ -355,6 +363,7 @@ function PlaceList({
             onClick={() => onSelect(table)}
           >
             <strong>{table.name}</strong>
+            {table.guestName ? <span>{table.guestName}</span> : null}
             <span>
               {formatRupees(table.totalPaise)} · {table.itemCount}
             </span>

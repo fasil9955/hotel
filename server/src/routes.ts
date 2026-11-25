@@ -9,8 +9,8 @@ import {
   addExpense,
   closeDay,
   dayCloseView,
-  listAttendance,
   listDailyExpenses,
+  monthAttendance,
   listEmployeeAccounts,
   listEmployees,
   listExpenses,
@@ -19,6 +19,7 @@ import {
   removeEmployee,
   removeExpense,
   requireAdmin,
+  saveCounted,
   saveOpening,
   printDayReport,
   unlockAdmin,
@@ -54,6 +55,8 @@ import {
   openTable,
   releaseEmptyOrder,
   removeLine,
+  setParcelName,
+  changeBillPayment,
   reprintBill,
   requestCancellation,
   sendToKitchen,
@@ -223,6 +226,11 @@ export function registerRoutes(
     return order;
   });
   app.get("/api/orders/:id", async (request) => getOrder(db, routeId(request.params)));
+  app.put("/api/orders/:id/name", async (request) => {
+    const order = setParcelName(db, routeId(request.params), stringField(request.body, "name"));
+    publish("floor");
+    return order;
+  });
   app.post("/api/orders/:id/send", async (request) => {
     const result = await sendToKitchen(db, routeId(request.params), request.body, send);
     publish("floor");
@@ -249,6 +257,11 @@ export function registerRoutes(
     return result;
   });
   app.post("/api/bills/:id/print", async (request) => reprintBill(db, routeId(request.params), send));
+  app.put("/api/bills/:id/payment", async (request) => {
+    const result = changeBillPayment(db, routeId(request.params), record(request.body).payment);
+    publish("day");
+    return result;
+  });
   app.post("/api/bills/:id/cancel-request", async (request) => {
     const result = requestCancellation(db, routeId(request.params));
     publish("day");
@@ -293,6 +306,7 @@ export function registerRoutes(
       address: stringField(body, "address"),
       aadhaar: stringField(body, "aadhaar"),
       salaryRupees: stringField(body, "salaryRupees"),
+      extraRupees: stringField(body, "extraRupees"),
     });
   });
 
@@ -305,6 +319,7 @@ export function registerRoutes(
       address: stringField(body, "address"),
       aadhaar: stringField(body, "aadhaar"),
       salaryRupees: stringField(body, "salaryRupees"),
+      extraRupees: stringField(body, "extraRupees"),
     });
   });
 
@@ -319,7 +334,7 @@ export function registerRoutes(
     return { ok: true };
   });
 
-  app.get("/api/attendance", async () => listAttendance(db));
+  app.get("/api/attendance", async () => monthAttendance(db));
 
   app.post("/api/attendance", async (request) => {
     const body = record(request.body);
@@ -332,7 +347,7 @@ export function registerRoutes(
 
   app.post("/api/expenses", async (request) => {
     const body = record(request.body);
-    return addExpense(db, stringField(body, "title"), body.amountRupees, body.employeeId);
+    return addExpense(db, stringField(body, "title"), body.amountRupees, body.employeeId, body.payment, body.cashRupees, body.upiRupees);
   });
 
   app.delete("/api/expenses/:id", async (request) => {
@@ -351,7 +366,8 @@ export function registerRoutes(
 
   app.get("/api/day-close", async (request) => {
     requireAdmin(db, request);
-    return dayCloseView(db);
+    const day = record(request.query).day;
+    return dayCloseView(db, new Date(), typeof day === "string" ? day : undefined);
   });
 
   app.put("/api/day-close/opening", async (request) => {
@@ -360,16 +376,36 @@ export function registerRoutes(
     return saveOpening(db, body.cashRupees, body.upiRupees);
   });
 
+  app.put("/api/day-close/closing", async (request) => {
+    requireAdmin(db, request);
+    const body = record(request.body);
+    return saveCounted(db, body.cashRupees, body.upiRupees);
+  });
+
   app.post("/api/day-close/print", async (request) => {
     requireAdmin(db, request);
     const body = record(request.body);
-    return printDayReport(db, { cashRupees: body.cashRupees, upiRupees: body.upiRupees }, send);
+    return printDayReport(
+      db,
+      {
+        cashRupees: body.cashRupees,
+        upiRupees: body.upiRupees,
+        closingCashRupees: body.closingCashRupees,
+        closingUpiRupees: body.closingUpiRupees,
+      },
+      send,
+    );
   });
 
   app.post("/api/day-close", async (request) => {
     requireAdmin(db, request);
     const body = record(request.body);
-    return closeDay(db, { cashRupees: body.cashRupees, upiRupees: body.upiRupees });
+    return closeDay(db, {
+      cashRupees: body.cashRupees,
+      upiRupees: body.upiRupees,
+      closingCashRupees: body.closingCashRupees,
+      closingUpiRupees: body.closingUpiRupees,
+    });
   });
 }
 

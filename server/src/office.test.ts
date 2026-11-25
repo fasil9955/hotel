@@ -37,7 +37,11 @@ describe("admin office", () => {
       url: "/api/attendance",
       payload: { employeeId: staff.json().id, status: "present" },
     });
-    assert.equal(marked.json()[0].status, "present");
+    const sheet = marked.json();
+    const todayIndex = sheet.days.indexOf(sheet.today);
+    assert.equal(sheet.rows[0].name, "Ravi");
+    assert.equal(sheet.rows[0].marks[todayIndex], "present");
+    assert.equal(sheet.rows[0].marks.filter((mark: string) => mark === "present").length, 1);
 
     const expense = await app.inject({
       method: "POST",
@@ -62,7 +66,7 @@ describe("admin office", () => {
       method: "POST",
       url: "/api/day-close",
       headers,
-      payload: { cashRupees: "500", upiRupees: "20" },
+      payload: { cashRupees: "500", upiRupees: "20", closingCashRupees: "450", closingUpiRupees: "20" },
     });
     assert.equal(closed.statusCode, 200);
     assert.equal(closed.json().expensePaise, 4000);
@@ -71,10 +75,43 @@ describe("admin office", () => {
     assert.equal(closed.json().openingUpiPaise, 2000);
     assert.equal(closed.json().closingCashPaise, 46000);
     assert.equal(closed.json().closingUpiPaise, 2000);
-    assert.equal(closed.json().tallyPaise, 0);
+    assert.equal(closed.json().countedCashPaise, 45000);
+    assert.equal(closed.json().countedUpiPaise, 2000);
+    assert.equal(closed.json().tallyPaise, 1000);
 
     const again = await app.inject({ method: "POST", url: "/api/day-close", headers });
     assert.equal(again.statusCode, 400);
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const previousDay = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
+    db.prepare("UPDATE day_closes SET day = ?").run(previousDay);
+    db.prepare("DELETE FROM day_openings").run();
+    const next = await app.inject({ method: "GET", url: "/api/day-close", headers });
+    assert.equal(next.json().live.openingLocked, true);
+    assert.equal(next.json().live.openingCashPaise, 45000);
+    assert.equal(next.json().live.openingUpiPaise, 2000);
+    await app.inject({
+      method: "PUT",
+      url: "/api/day-close/opening",
+      headers,
+      payload: { cashRupees: "1", upiRupees: "1" },
+    });
+    const kept = await app.inject({ method: "GET", url: "/api/day-close", headers });
+    assert.equal(kept.json().live.openingCashPaise, 45000);
+    assert.equal(kept.json().live.openingUpiPaise, 2000);
+
+    const [year, month, date] = previousDay.split("-").map(Number);
+    db.prepare("UPDATE expenses SET created_at = ?").run(new Date(year, month - 1, date, 12).toISOString());
+    const past = await app.inject({ method: "GET", url: `/api/day-close?day=${previousDay}`, headers });
+    assert.equal(past.statusCode, 200);
+    assert.equal(past.json().day, previousDay);
+    assert.equal(past.json().closed.countedCashPaise, 45000);
+    assert.equal(past.json().closed.countedUpiPaise, 2000);
+    assert.equal(past.json().expenses.length, 1);
+    assert.equal(past.json().expenses[0].title, "Milk");
+    const future = await app.inject({ method: "GET", url: "/api/day-close?day=2999-01-01", headers });
+    assert.equal(future.statusCode, 400);
 
     await app.close();
     db.close();
@@ -121,6 +158,25 @@ describe("admin office", () => {
     const today = await app.inject({ method: "GET", url: "/api/expenses" });
     assert.equal(today.json().totalPaise, 14000);
 
+    const mixed = await app.inject({
+      method: "POST",
+      url: "/api/expenses",
+      payload: { title: "Veg", amountRupees: "30", payment: "mix", cashRupees: "10", upiRupees: "20" },
+    });
+    assert.equal(mixed.statusCode, 200);
+    assert.equal(mixed.json().payment, "mix");
+    assert.equal(mixed.json().cashPaise, 1000);
+    assert.equal(mixed.json().upiPaise, 2000);
+    const uneven = await app.inject({
+      method: "POST",
+      url: "/api/expenses",
+      payload: { title: "Veg", amountRupees: "30", payment: "mix", cashRupees: "10", upiRupees: "10" },
+    });
+    assert.equal(uneven.statusCode, 400);
+    const split = await app.inject({ method: "GET", url: "/api/expenses" });
+    assert.equal(split.json().cashPaise, 15000);
+    assert.equal(split.json().upiPaise, 2000);
+
     const usual = await app.inject({ method: "GET", url: "/api/daily-expenses" });
     assert.equal(usual.json()[0].title, "Milk");
     assert.equal(usual.json()[0].todayPaise, 4000);
@@ -154,16 +210,29 @@ describe("admin office", () => {
       method: "PUT",
       url: `/api/employees/${employeeId}`,
       headers,
-      payload: { name: "Ravi Kumar", mobile: "9876543210", address: "Town", aadhaar: "", salaryRupees: "8000" },
+      payload: {
+        name: "Ravi Kumar",
+        mobile: "9876543210",
+        address: "Town",
+        aadhaar: "",
+        salaryRupees: "8000",
+        extraRupees: "500",
+      },
     });
     assert.equal(edited.statusCode, 200);
     assert.equal(edited.json().name, "Ravi Kumar");
     assert.equal(edited.json().address, "Town");
     assert.equal(edited.json().aadhaar, "123456789012");
     assert.equal(edited.json().salaryPaise, 800000);
+    assert.equal(edited.json().extraPaise, 50000);
     const priced = await app.inject({ method: "GET", url: "/api/employee-accounts", headers });
+    const days = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    const earned = Math.round(800000 / days);
     assert.equal(priced.json()[0].salaryPaise, 800000);
-    assert.equal(priced.json()[0].balancePaise, 790000);
+    assert.equal(priced.json()[0].presentDays, 1);
+    assert.equal(priced.json()[0].earnedPaise, earned);
+    assert.equal(priced.json()[0].extraPaise, 50000);
+    assert.equal(priced.json()[0].balancePaise, earned + 50000 - 10000);
 
     const removed = await app.inject({ method: "DELETE", url: `/api/employees/${employeeId}`, headers });
     assert.equal(removed.statusCode, 200);

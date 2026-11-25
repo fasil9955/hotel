@@ -85,6 +85,17 @@ describe("a meal", () => {
     assert.equal(report.json().count, 1);
     assert.equal(report.json().cashPaise, 14725);
 
+    const moved = await app.inject({
+      method: "PUT",
+      url: `/api/bills/${bill.json().bill.id}/payment`,
+      payload: { payment: "upi" },
+    });
+    assert.equal(moved.statusCode, 200);
+    assert.equal(moved.json().payment, "upi");
+    const shifted = await app.inject({ method: "GET", url: "/api/reports/today" });
+    assert.equal(shifted.json().cashPaise, 0);
+    assert.equal(shifted.json().upiPaise, 14725);
+
     const floor = await app.inject({ method: "GET", url: "/api/floor" });
     assert.equal(floor.json()[0].openOrderId, null);
 
@@ -141,6 +152,21 @@ describe("a meal", () => {
     const order = await app.inject({ method: "POST", url: `/api/tables/${parcel.json().id}/order` });
     assert.equal(order.json().parcel, true);
     assert.equal(order.json().kind, "parcel");
+    assert.equal(order.json().guestName, "");
+    const named = await app.inject({
+      method: "PUT",
+      url: `/api/orders/${order.json().id}/name`,
+      remoteAddress: "192.168.1.40",
+      payload: { name: "Ravi" },
+    });
+    assert.equal(named.statusCode, 200);
+    assert.equal(named.json().guestName, "Ravi");
+    const tooLong = await app.inject({
+      method: "PUT",
+      url: `/api/orders/${order.json().id}/name`,
+      payload: { name: "Ravi".repeat(11) },
+    });
+    assert.equal(tooLong.statusCode, 400);
 
     await app.inject({
       method: "PUT",
@@ -154,6 +180,7 @@ describe("a meal", () => {
     });
     assert.equal(sentOrder.json().order.lines[0].pricePaise, 20000);
     assert.match(sent[0].toString("ascii"), /PARCEL/);
+    assert.match(sent[0].toString("ascii"), /Ravi/);
     const lineId = sentOrder.json().order.lines[0].id;
     const tabletRemove = await app.inject({
       method: "DELETE",

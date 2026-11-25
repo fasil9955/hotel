@@ -20,6 +20,9 @@ export function Expenses() {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [employeeId, setEmployeeId] = useState("");
+  const [payment, setPayment] = useState<"cash" | "upi" | "mix" | null>(null);
+  const [cashPart, setCashPart] = useState("");
+  const [upiPart, setUpiPart] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
@@ -60,10 +63,19 @@ export function Expenses() {
     setError("");
     try {
       const chosen = expenseFrom(category, description, employeeId, categories);
-      await addExpense(chosen.title, amount, chosen.employeeId);
+      if (!payment) throw new Error("Choose cash, GPay, or mix.");
+      await addExpense(
+        chosen.title,
+        amount,
+        payment,
+        chosen.employeeId,
+        payment === "mix" ? { cashRupees: cashPart, upiRupees: upiPart } : undefined,
+      );
       setDescription("");
       setAmount("");
       setEmployeeId("");
+      setCashPart("");
+      setUpiPart("");
       await refresh();
     } catch (caught) {
       setError(text(caught));
@@ -87,7 +99,7 @@ export function Expenses() {
       {error ? <p className="banner bad">{error}</p> : null}
       <section className="panel">
         <h1>Expenses</h1>
-        <p className="hint">Pick a category and enter the amount. Employees asks who received it. Other asks you to write what it was.</p>
+        <p className="hint">Pick a category, enter the amount, then choose cash, GPay, or a mix of both.</p>
         <div className="fields">
           <label>
             Category
@@ -132,8 +144,31 @@ export function Expenses() {
             </label>
           ) : null}
         </div>
+        <div className="pay-choice" role="group" aria-label="How it was paid">
+          <button type="button" aria-pressed={payment === "cash"} onClick={() => setPayment("cash")}>
+            Cash
+          </button>
+          <button type="button" aria-pressed={payment === "upi"} onClick={() => setPayment("upi")}>
+            GPay
+          </button>
+          <button type="button" aria-pressed={payment === "mix"} onClick={() => setPayment("mix")}>
+            Mix
+          </button>
+        </div>
+        {payment === "mix" ? (
+          <div className="fields">
+            <label>
+              Cash
+              <input inputMode="decimal" value={cashPart} placeholder="0" onChange={(event) => setCashPart(event.target.value)} />
+            </label>
+            <label>
+              GPay
+              <input inputMode="decimal" value={upiPart} placeholder="0" onChange={(event) => setUpiPart(event.target.value)} />
+            </label>
+          </div>
+        ) : null}
         <div className="row-actions">
-          <button type="button" className="primary" disabled={busy !== ""} onClick={() => void add()}>
+          <button type="button" className="primary" disabled={busy !== "" || payment === null} onClick={() => void add()}>
             {busy === "add" ? "Saving…" : "Add"}
           </button>
         </div>
@@ -152,6 +187,11 @@ export function Expenses() {
       <section className="panel">
         <h2>Today</h2>
         <p className="total">{formatRupees(list?.totalPaise ?? 0)}</p>
+        {list && list.expenses.length > 0 ? (
+          <p className="hint">
+            Cash {formatRupees(list.cashPaise)} · GPay {formatRupees(list.upiPaise)}
+          </p>
+        ) : null}
         {list && list.expenses.length === 0 ? <p className="hint">No expenses yet today.</p> : null}
         <ul className="menu-list">
           {list?.expenses.map((expense) => (
@@ -162,6 +202,7 @@ export function Expenses() {
               </strong>
               <span>
                 {formatRupees(expense.amountPaise)}
+                <span className="who">{paidWith(expense)}</span>
                 <button type="button" className="text danger" onClick={() => void remove(expense.id)}>
                   Remove
                 </button>
@@ -194,6 +235,12 @@ function expenseFrom(
   const named = categories.find((item) => item.id === id);
   if (!named) throw new Error("Choose a category.");
   return { title: named.title };
+}
+
+function paidWith(expense: { payment: "cash" | "upi" | "mix"; cashPaise: number; upiPaise: number }): string {
+  if (expense.payment === "upi") return "GPay";
+  if (expense.payment === "mix") return `Cash ${formatRupees(expense.cashPaise)} · GPay ${formatRupees(expense.upiPaise)}`;
+  return "Cash";
 }
 
 function text(error: unknown): string {

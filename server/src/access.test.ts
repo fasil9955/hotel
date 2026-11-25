@@ -11,6 +11,7 @@ describe("tablet access", () => {
   it("lets a tablet listen for changes and leave an empty order", () => {
     assert.equal(orderRouteAllowed("GET", "/api/live"), true);
     assert.equal(orderRouteAllowed("POST", "/api/orders/3/release"), true);
+    assert.equal(orderRouteAllowed("PUT", "/api/orders/3/name"), true);
     assert.equal(orderRouteAllowed("DELETE", "/api/orders/3"), false);
     assert.equal(orderRouteAllowed("DELETE", "/api/parcels/3"), false);
   });
