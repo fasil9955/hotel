@@ -107,10 +107,6 @@ describe("a meal", () => {
     });
     assert.equal(again.statusCode, 200);
 
-    const copy = await app.inject({ method: "POST", url: "/api/backup", headers: { authorization: `Bearer ${session.json().token}` } });
-    assert.equal(copy.statusCode, 200);
-    assert.match(copy.json().file, /hotel-/);
-
     await app.close();
     db.close();
   });

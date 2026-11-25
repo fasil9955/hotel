@@ -1,13 +1,11 @@
 import { useEffect, useState } from "react";
-import { backupDatabase, getToday, requestCancellation, type TodayReport } from "../api";
+import { getToday, requestCancellation, type TodayReport } from "../api";
 import { useSync } from "../live";
 import { formatRupees } from "../money";
 
 export function Day() {
   const [report, setReport] = useState<TodayReport | null>(null);
   const [error, setError] = useState("");
-  const [backup, setBackup] = useState("");
-  const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState<number | null>(null);
 
   function load() {
@@ -67,24 +65,6 @@ export function Day() {
             </li>
           ))}
         </ul>
-        <div className="row-actions">
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy}
-            onClick={() => {
-              setBusy(true);
-              setBackup("");
-              backupDatabase()
-                .then((result) => setBackup(`Copied to ${result.file}`))
-                .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not copy the database."))
-                .finally(() => setBusy(false));
-            }}
-          >
-            {busy ? "Copying…" : "Copy database backup"}
-          </button>
-          {backup ? <p className="note ok">{backup}</p> : null}
-        </div>
       </section>
     </>
   );

@@ -25,7 +25,6 @@ import {
   updateEmployee,
   employeeLedger,
 } from "./office.js";
-import { backupDatabase } from "./backup.js";
 import {
   createCategory,
   createItem,
@@ -265,11 +264,6 @@ export function registerRoutes(
     const result = acceptCancellation(db, routeId(request.params));
     publish("day");
     return result;
-  });
-
-  app.post("/api/backup", async () => {
-    if (!options.databaseFile) throw new HttpError("This server has no database file to copy.", 400);
-    return { file: backupDatabase(db, options.databaseFile) };
   });
 
   app.post("/api/system/startup", async () => {

@@ -290,10 +290,6 @@ export function getToday(): Promise<TodayReport> {
   return api("/api/reports/today");
 }
 
-export function backupDatabase(): Promise<{ file: string }> {
-  return api("/api/backup", { method: "POST" });
-}
-
 export function installStartup(): Promise<{ shortcut: string }> {
   return api("/api/system/startup", { method: "POST" });
 }
