@@ -303,7 +303,9 @@ export type EmployeeLedger = {
   name: string;
   mobile: string;
   address: string;
+  salaryPaise: number;
   givenPaise: number;
+  balancePaise: number;
   months: Array<{
     month: string;
     present: number;
@@ -319,7 +321,10 @@ export type EmployeeAccount = {
   mobile: string;
   address: string;
   aadhaar: string;
+  salaryPaise: number;
   givenPaise: number;
+  givenMonthPaise: number;
+  balancePaise: number;
   entries: AccountEntry[];
 };
 
@@ -375,7 +380,7 @@ export function getEmployeeAccounts(token: string): Promise<EmployeeAccount[]> {
 
 export function addEmployee(
   token: string,
-  person: { name: string; mobile: string; address: string; aadhaar: string },
+  person: { name: string; mobile: string; address: string; aadhaar: string; salaryRupees: string },
 ): Promise<Employee> {
   return api("/api/employees", { method: "POST", ...adminJson(token, person) });
 }
@@ -383,7 +388,7 @@ export function addEmployee(
 export function updateEmployee(
   token: string,
   id: number,
-  person: { name: string; mobile: string; address: string; aadhaar: string },
+  person: { name: string; mobile: string; address: string; aadhaar: string; salaryRupees: string },
 ): Promise<Employee> {
   return api(`/api/employees/${id}`, { method: "PUT", ...adminJson(token, person) });
 }

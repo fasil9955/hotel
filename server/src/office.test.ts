@@ -132,6 +132,9 @@ describe("admin office", () => {
     assert.equal(accounts.json()[0].address, "Madikeri");
     assert.equal(accounts.json()[0].aadhaar, "123456789012");
     assert.equal(accounts.json()[0].givenPaise, 10000);
+    assert.equal(accounts.json()[0].salaryPaise, 0);
+    assert.equal(accounts.json()[0].givenMonthPaise, 10000);
+    assert.equal(accounts.json()[0].balancePaise, 0);
     assert.equal(accounts.json()[0].entries[0].title, "Advance");
 
     const marked = await app.inject({
@@ -151,12 +154,16 @@ describe("admin office", () => {
       method: "PUT",
       url: `/api/employees/${employeeId}`,
       headers,
-      payload: { name: "Ravi Kumar", mobile: "9876543210", address: "Town", aadhaar: "" },
+      payload: { name: "Ravi Kumar", mobile: "9876543210", address: "Town", aadhaar: "", salaryRupees: "8000" },
     });
     assert.equal(edited.statusCode, 200);
     assert.equal(edited.json().name, "Ravi Kumar");
     assert.equal(edited.json().address, "Town");
     assert.equal(edited.json().aadhaar, "123456789012");
+    assert.equal(edited.json().salaryPaise, 800000);
+    const priced = await app.inject({ method: "GET", url: "/api/employee-accounts", headers });
+    assert.equal(priced.json()[0].salaryPaise, 800000);
+    assert.equal(priced.json()[0].balancePaise, 790000);
 
     const removed = await app.inject({ method: "DELETE", url: `/api/employees/${employeeId}`, headers });
     assert.equal(removed.statusCode, 200);

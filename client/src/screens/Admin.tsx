@@ -152,11 +152,11 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
     setOpeningReady(true);
   }, [close, openingReady]);
 
-  async function add(person: { name: string; mobile: string; address: string }) {
+  async function add(person: { name: string; mobile: string; address: string; salary: string }) {
     setBusy("save");
     setError("");
     try {
-      await addEmployee(token, { ...person, aadhaar: "" });
+      await addEmployee(token, { ...person, aadhaar: "", salaryRupees: person.salary });
       setAdding(false);
       const [staff, day] = await Promise.all([getEmployeeAccounts(token), getDayClose(token)]);
       setEmployees(staff);
@@ -169,12 +169,12 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
     }
   }
 
-  async function saveEdit(person: { name: string; mobile: string; address: string }) {
+  async function saveEdit(person: { name: string; mobile: string; address: string; salary: string }) {
     if (!editing) return;
     setBusy("save");
     setError("");
     try {
-      await updateEmployee(token, editing.id, { ...person, aadhaar: "" });
+      await updateEmployee(token, editing.id, { ...person, aadhaar: "", salaryRupees: person.salary });
       setEditing(null);
       const [staff, day] = await Promise.all([getEmployeeAccounts(token), getDayClose(token)]);
       setEmployees(staff);
@@ -278,7 +278,7 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
       {page === "employees" ? (
       <section className="panel">
         <h1>Employee management</h1>
-        <p className="hint">Money given from Expenses shows on each account.</p>
+        <p className="hint">Balance is this month's salary minus the money given this month.</p>
         <div className="row-actions">
           <button
             type="button"
@@ -298,7 +298,9 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
               <div className="account-main">
                 <div className="account-head">
                   <strong>{employee.name}</strong>
-                  <span>{formatRupees(employee.givenPaise)} given</span>
+                  <span>Salary {formatRupees(employee.salaryPaise)}</span>
+                  <span>{formatRupees(employee.givenMonthPaise)} given</span>
+                  <span>Balance {formatRupees(employee.balancePaise)}</span>
                 </div>
                 {employee.mobile || employee.aadhaar ? (
                   <p className="hint">
@@ -395,7 +397,7 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
       {adding ? (
         <EmployeeForm
           title="Add employee"
-          initial={{ name: "", mobile: "", address: "" }}
+          initial={{ name: "", mobile: "", address: "", salary: "" }}
           busy={busy === "save"}
           error={error}
           onClose={() => {
@@ -408,7 +410,12 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
       {editing ? (
         <EmployeeForm
           title="Edit employee"
-          initial={{ name: editing.name, mobile: editing.mobile, address: editing.address }}
+          initial={{
+            name: editing.name,
+            mobile: editing.mobile,
+            address: editing.address,
+            salary: rupeeInput(editing.salaryPaise),
+          }}
           busy={busy === "save"}
           error={error}
           onClose={() => {
@@ -469,15 +476,16 @@ function EmployeeForm({
   onSave,
 }: {
   title: string;
-  initial: { name: string; mobile: string; address: string };
+  initial: { name: string; mobile: string; address: string; salary: string };
   busy: boolean;
   error: string;
   onClose: () => void;
-  onSave: (person: { name: string; mobile: string; address: string }) => void;
+  onSave: (person: { name: string; mobile: string; address: string; salary: string }) => void;
 }) {
   const [name, setName] = useState(initial.name);
   const [mobile, setMobile] = useState(initial.mobile);
   const [address, setAddress] = useState(initial.address);
+  const [salary, setSalary] = useState(initial.salary);
 
   return (
     <div
@@ -493,7 +501,7 @@ function EmployeeForm({
         aria-labelledby="employee-form-title"
         onSubmit={(event) => {
           event.preventDefault();
-          onSave({ name, mobile, address });
+          onSave({ name, mobile, address, salary });
         }}
       >
         <h2 id="employee-form-title">{title}</h2>
@@ -510,6 +518,15 @@ function EmployeeForm({
           <label>
             Address
             <textarea value={address} maxLength={160} onChange={(event) => setAddress(event.target.value)} />
+          </label>
+          <label>
+            Monthly salary
+            <input
+              inputMode="decimal"
+              value={salary}
+              placeholder="0"
+              onChange={(event) => setSalary(event.target.value)}
+            />
           </label>
         </div>
         <div className="row-actions">
@@ -557,6 +574,11 @@ function AccountView({
     >
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="account-title">
         <h2 id="account-title">{ledger ? `${ledger.name}'s account` : "Account"}</h2>
+        {ledger ? (
+          <p className="hint">
+            Salary {formatRupees(ledger.salaryPaise)} · Balance {formatRupees(ledger.balancePaise)}
+          </p>
+        ) : null}
         {error ? <p className="note bad">{error}</p> : null}
         {!ledger && !error ? <p className="lede">Loading…</p> : null}
         {ledger?.months.map((month) => (

@@ -85,6 +85,7 @@ export function migrate(db: DatabaseSync): void {
       mobile TEXT NOT NULL DEFAULT '',
       address TEXT NOT NULL DEFAULT '',
       aadhaar TEXT NOT NULL DEFAULT '',
+      salary_paise INTEGER NOT NULL DEFAULT 0,
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL
     );
@@ -149,6 +150,7 @@ export function migrate(db: DatabaseSync): void {
   addColumn(db, "employees", "mobile", "TEXT NOT NULL DEFAULT ''");
   addColumn(db, "employees", "address", "TEXT NOT NULL DEFAULT ''");
   addColumn(db, "employees", "aadhaar", "TEXT NOT NULL DEFAULT ''");
+  addColumn(db, "employees", "salary_paise", "INTEGER NOT NULL DEFAULT 0");
   addColumn(db, "day_closes", "opening_cash_paise", "INTEGER NOT NULL DEFAULT 0");
   addColumn(db, "day_closes", "opening_upi_paise", "INTEGER NOT NULL DEFAULT 0");
 }

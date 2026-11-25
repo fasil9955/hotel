@@ -292,6 +292,7 @@ export function registerRoutes(
       mobile: stringField(body, "mobile"),
       address: stringField(body, "address"),
       aadhaar: stringField(body, "aadhaar"),
+      salaryRupees: stringField(body, "salaryRupees"),
     });
   });
 
@@ -303,6 +304,7 @@ export function registerRoutes(
       mobile: stringField(body, "mobile"),
       address: stringField(body, "address"),
       aadhaar: stringField(body, "aadhaar"),
+      salaryRupees: stringField(body, "salaryRupees"),
     });
   });
 

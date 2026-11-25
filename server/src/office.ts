@@ -12,9 +12,14 @@ import { readSettings } from "./settings.js";
 const ADMIN_PIN = "313786";
 const ADMIN_SESSION_MS = 12 * 60 * 60 * 1000;
 
-export type Employee = { id: number; name: string; mobile: string; address: string; aadhaar: string };
+export type Employee = { id: number; name: string; mobile: string; address: string; aadhaar: string; salaryPaise: number };
 export type AccountEntry = { id: number; title: string; amountPaise: number; createdAt: string };
-export type EmployeeAccount = Employee & { givenPaise: number; entries: AccountEntry[] };
+export type EmployeeAccount = Employee & {
+  givenPaise: number;
+  givenMonthPaise: number;
+  balancePaise: number;
+  entries: AccountEntry[];
+};
 export type Expense = {
   id: number;
   title: string;
@@ -62,29 +67,33 @@ export function listEmployees(db: DatabaseSync): Array<Pick<Employee, "id" | "na
   return rows;
 }
 
-export function addEmployee(db: DatabaseSync, input: { name: string; mobile: string; address: string; aadhaar: string }): Employee {
+export function addEmployee(
+  db: DatabaseSync,
+  input: { name: string; mobile: string; address: string; aadhaar: string; salaryRupees: string },
+): Employee {
   const person = readPerson(input);
   const result = db
-    .prepare("INSERT INTO employees (name, mobile, address, aadhaar, active, created_at) VALUES (?, ?, ?, ?, 1, ?)")
-    .run(person.name, person.mobile, person.address, person.aadhaar, new Date().toISOString());
+    .prepare("INSERT INTO employees (name, mobile, address, aadhaar, salary_paise, active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)")
+    .run(person.name, person.mobile, person.address, person.aadhaar, person.salaryPaise, new Date().toISOString());
   return { id: Number(result.lastInsertRowid), ...person };
 }
 
 export function updateEmployee(
   db: DatabaseSync,
   id: number,
-  input: { name: string; mobile: string; address: string; aadhaar: string },
+  input: { name: string; mobile: string; address: string; aadhaar: string; salaryRupees: string },
 ): Employee {
   const existing = db.prepare("SELECT aadhaar FROM employees WHERE id = ? AND active = 1").get(id) as
     | { aadhaar: string }
     | undefined;
   if (!existing) throw new HttpError("That employee was not found.", 404);
   const person = readPerson({ ...input, aadhaar: digitsOnly(input.aadhaar) ? input.aadhaar : existing.aadhaar });
-  db.prepare("UPDATE employees SET name = ?, mobile = ?, address = ?, aadhaar = ? WHERE id = ?").run(
+  db.prepare("UPDATE employees SET name = ?, mobile = ?, address = ?, aadhaar = ?, salary_paise = ? WHERE id = ?").run(
     person.name,
     person.mobile,
     person.address,
     person.aadhaar,
+    person.salaryPaise,
     id,
   );
   return { id, ...person };
@@ -104,6 +113,7 @@ export function listEmployeeAccounts(db: DatabaseSync): EmployeeAccount[] {
     .prepare(
       `SELECT employees.id AS id, employees.name AS name, employees.mobile AS mobile,
               employees.address AS address, employees.aadhaar AS aadhaar,
+              employees.salary_paise AS salary_paise,
               COALESCE(SUM(expenses.amount_paise), 0) AS given_paise
        FROM employees
        LEFT JOIN expenses ON expenses.employee_id = employees.id
@@ -117,6 +127,7 @@ export function listEmployeeAccounts(db: DatabaseSync): EmployeeAccount[] {
     mobile: string;
     address: string;
     aadhaar: string;
+    salary_paise: number;
     given_paise: number;
   }>;
   const lines = db
@@ -140,15 +151,28 @@ export function listEmployeeAccounts(db: DatabaseSync): EmployeeAccount[] {
     });
     byEmployee.set(line.employee_id, list);
   }
-  return people.map((person) => ({
-    id: person.id,
-    name: person.name,
-    mobile: person.mobile,
-    address: person.address,
-    aadhaar: person.aadhaar,
-    givenPaise: Number(person.given_paise),
-    entries: byEmployee.get(person.id) ?? [],
-  }));
+  const month = monthKey(new Date());
+  const givenThisMonth = new Map<number, number>();
+  for (const line of lines) {
+    if (monthKey(new Date(line.created_at)) !== month) continue;
+    givenThisMonth.set(line.employee_id, (givenThisMonth.get(line.employee_id) ?? 0) + line.amount_paise);
+  }
+  return people.map((person) => {
+    const salaryPaise = Number(person.salary_paise);
+    const givenMonthPaise = givenThisMonth.get(person.id) ?? 0;
+    return {
+      id: person.id,
+      name: person.name,
+      mobile: person.mobile,
+      address: person.address,
+      aadhaar: person.aadhaar,
+      salaryPaise,
+      givenPaise: Number(person.given_paise),
+      givenMonthPaise,
+      balancePaise: salaryPaise === 0 ? 0 : salaryPaise - givenMonthPaise,
+      entries: byEmployee.get(person.id) ?? [],
+    };
+  });
 }
 
 export type EmployeeMonth = {
@@ -164,13 +188,15 @@ export type EmployeeLedger = {
   name: string;
   mobile: string;
   address: string;
+  salaryPaise: number;
   givenPaise: number;
+  balancePaise: number;
   months: EmployeeMonth[];
 };
 
 export function employeeLedger(db: DatabaseSync, id: number, now = new Date()): EmployeeLedger {
-  const person = db.prepare("SELECT id, name, mobile, address FROM employees WHERE id = ? AND active = 1").get(id) as
-    | { id: number; name: string; mobile: string; address: string }
+  const person = db.prepare("SELECT id, name, mobile, address, salary_paise FROM employees WHERE id = ? AND active = 1").get(id) as
+    | { id: number; name: string; mobile: string; address: string; salary_paise: number }
     | undefined;
   if (!person) throw new HttpError("That employee was not found.", 404);
   const months = new Map<string, EmployeeMonth>();
@@ -204,12 +230,16 @@ export function employeeLedger(db: DatabaseSync, id: number, now = new Date()): 
       createdAt: payment.created_at,
     });
   }
+  const salaryPaise = Number(person.salary_paise);
+  const givenMonthPaise = months.get(monthKey(now))?.givenPaise ?? 0;
   return {
     id: person.id,
     name: person.name,
     mobile: person.mobile,
     address: person.address,
+    salaryPaise,
     givenPaise: payments.reduce((total, payment) => total + payment.amount_paise, 0),
+    balancePaise: salaryPaise === 0 ? 0 : salaryPaise - givenMonthPaise,
     months: [...months.values()].sort((left, right) => right.month.localeCompare(left.month)),
   };
 }
@@ -588,7 +618,13 @@ function ensureCategories(db: DatabaseSync): void {
   }
 }
 
-function readPerson(input: { name: string; mobile: string; address: string; aadhaar: string }): Omit<Employee, "id"> {
+function readPerson(input: {
+  name: string;
+  mobile: string;
+  address: string;
+  aadhaar: string;
+  salaryRupees: string;
+}): Omit<Employee, "id"> {
   const name = input.name.trim();
   if (!name) throw new HttpError("Enter the employee name.", 400);
   if (name.length > 40) throw new HttpError("The name must be 40 characters or less.", 400);
@@ -599,7 +635,15 @@ function readPerson(input: { name: string; mobile: string; address: string; aadh
   if (address.length > 160) throw new HttpError("Keep the address to 160 characters.", 400);
   const aadhaar = digitsOnly(input.aadhaar);
   if (aadhaar && !/^\d{12}$/.test(aadhaar)) throw new HttpError("Enter the 12-digit Aadhaar number.", 400);
-  return { name, mobile, address, aadhaar };
+  const salaryPaise = readSalary(input.salaryRupees);
+  return { name, mobile, address, aadhaar, salaryPaise };
+}
+
+function readSalary(value: string): number {
+  if (value.trim() === "") return 0;
+  const paise = rupeesToPaise(value);
+  if (typeof paise !== "number") throw new HttpError(paise.error, 400);
+  return paise;
 }
 
 function monthKey(date: Date): string {
