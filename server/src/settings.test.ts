@@ -22,7 +22,7 @@ describe("settings", () => {
     const parsed = parseSettings({
       hotelName: "Palm Court",
       gstPercent: 5,
-      paperWidth: 80,
+      paperWidth: 78,
       kitchenHost: "192.168.1.60",
       kitchenPort: 9100,
       cashierHost: "192.168.1.61",

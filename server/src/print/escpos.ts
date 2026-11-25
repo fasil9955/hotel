@@ -5,7 +5,7 @@ const ESC = 0x1b;
 const GS = 0x1d;
 
 export function columnsFor(paperWidth: PaperWidth): number {
-  return paperWidth === 58 ? 32 : 48;
+  return paperWidth === 58 ? 32 : 46;
 }
 
 export function buildTestSlip(options: {
@@ -139,17 +139,28 @@ export function buildBillSlip(options: {
       "\n",
     );
   }
-  body.push(rule, "\n", pair("Total", formatPaise(options.subtotalPaise), columns), "\n");
-  if (options.discountPaise > 0) {
-    body.push(pair("Discount", formatPaise(options.discountPaise), columns), "\n");
-  }
+  const afterGst = options.subtotalPaise + options.cgstPaise + options.sgstPaise;
   body.push(
+    rule,
+    "\n",
+    pair("Total", formatPaise(options.subtotalPaise), columns),
+    "\n",
     pair(`CGST ${half}%`, formatPaise(options.cgstPaise), columns),
     "\n",
     pair(`SGST ${half}%`, formatPaise(options.sgstPaise), columns),
     "\n",
+  );
+  if (options.discountPaise > 0) {
+    body.push(
+      pair("Total", formatPaise(afterGst), columns),
+      "\n",
+      pair("Discount", formatPaise(options.discountPaise), columns),
+      "\n",
+    );
+  }
+  body.push(
     [ESC, 0x45, 0x01],
-    pair("Net Total", formatPaise(options.totalPaise), columns),
+    pair(options.discountPaise > 0 ? "Net Amount" : "Net Total", formatPaise(options.totalPaise), columns),
     "\n",
     [ESC, 0x45, 0x00],
     rule,

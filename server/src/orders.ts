@@ -197,10 +197,10 @@ export async function closeBill(
   }
   const discount = body.discountRupees === undefined || body.discountRupees === "" ? 0 : rupeesToPaise(body.discountRupees);
   if (typeof discount !== "number") throw new HttpError(discount.error, 400);
-  if (discount > order.totalPaise) throw new HttpError("The discount is larger than the bill.", 400);
-
   const settings = readSettings(db);
-  const tax = addGst(order.totalPaise - discount, settings.gstPercent);
+  const tax = addGst(order.totalPaise, settings.gstPercent);
+  if (discount > tax.totalPaise) throw new HttpError("The discount is larger than the bill.", 400);
+  const netPaise = tax.totalPaise - discount;
   const createdAt = new Date().toISOString();
   const result = db
     .prepare(
@@ -218,7 +218,7 @@ export async function closeBill(
       tax.taxablePaise,
       tax.cgstPaise,
       tax.sgstPaise,
-      tax.totalPaise,
+      netPaise,
       payment,
       createdAt,
     );

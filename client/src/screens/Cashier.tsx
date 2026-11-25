@@ -88,8 +88,8 @@ export function Cashier() {
   const dining = active.filter((table) => table.kind !== "parcel");
   const parcels = active.filter((table) => table.kind === "parcel");
   const discountPaise = rupees(discount);
-  const taxable = order ? Math.max(order.totalPaise - discountPaise, 0) : 0;
-  const tax = addGst(taxable, gstPercent);
+  const tax = addGst(order?.totalPaise ?? 0, gstPercent);
+  const netPaise = Math.max(tax.totalPaise - discountPaise, 0);
   const halfGst = String(Math.round((gstPercent / 2) * 100) / 100);
 
   function select(table: FloorTable) {
@@ -205,12 +205,6 @@ export function Cashier() {
                   <span>Total</span>
                   <span>{formatBillAmount(order.totalPaise)}</span>
                 </p>
-                {discountPaise > 0 ? (
-                  <p>
-                    <span>Discount</span>
-                    <span>{formatBillAmount(discountPaise)}</span>
-                  </p>
-                ) : null}
                 <p>
                   <span>CGST {halfGst}%</span>
                   <span>{formatBillAmount(tax.cgstPaise)}</span>
@@ -219,8 +213,20 @@ export function Cashier() {
                   <span>SGST {halfGst}%</span>
                   <span>{formatBillAmount(tax.sgstPaise)}</span>
                 </p>
+                {discountPaise > 0 ? (
+                  <>
+                    <p>
+                      <span>Total</span>
+                      <span>{formatBillAmount(tax.totalPaise)}</span>
+                    </p>
+                    <p>
+                      <span>Discount</span>
+                      <span>{formatBillAmount(discountPaise)}</span>
+                    </p>
+                  </>
+                ) : null}
               </div>
-              <p className="total">{formatRupees(tax.totalPaise)}</p>
+              <p className="total">{formatRupees(netPaise)}</p>
               <div className="pay">
                 {billPreview ? (
                   <button type="button" className="secondary" disabled={order.lines.length === 0 || printing} onClick={() => setPreview((open) => !open)}>
@@ -272,12 +278,6 @@ export function Cashier() {
                     <span>Total</span>
                     <span>{formatBillAmount(order.totalPaise)}</span>
                   </p>
-                  {discountPaise > 0 ? (
-                    <p className="preview-row">
-                      <span>Discount</span>
-                      <span>{formatBillAmount(discountPaise)}</span>
-                    </p>
-                  ) : null}
                   <p className="preview-row">
                     <span>CGST {halfGst}%</span>
                     <span>{formatBillAmount(tax.cgstPaise)}</span>
@@ -286,9 +286,21 @@ export function Cashier() {
                     <span>SGST {halfGst}%</span>
                     <span>{formatBillAmount(tax.sgstPaise)}</span>
                   </p>
+                  {discountPaise > 0 ? (
+                    <>
+                      <p className="preview-row">
+                        <span>Total</span>
+                        <span>{formatBillAmount(tax.totalPaise)}</span>
+                      </p>
+                      <p className="preview-row">
+                        <span>Discount</span>
+                        <span>{formatBillAmount(discountPaise)}</span>
+                      </p>
+                    </>
+                  ) : null}
                   <p className="preview-row preview-total">
-                    <span>Net Total</span>
-                    <span>{formatBillAmount(tax.totalPaise)}</span>
+                    <span>{discountPaise > 0 ? "Net Amount" : "Net Total"}</span>
+                    <span>{formatBillAmount(netPaise)}</span>
                   </p>
                   <p className="preview-center">Thanks & Visit Again</p>
                 </div>

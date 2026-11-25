@@ -1,4 +1,4 @@
-export type PaperWidth = 58 | 80;
+export type PaperWidth = 58 | 78;
 
 export type Settings = {
   hotelName: string;

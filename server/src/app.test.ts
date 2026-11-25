@@ -18,7 +18,7 @@ describe("settings API", () => {
       payload: {
         hotelName: "Palm Court",
         gstPercent: 5,
-        paperWidth: 80,
+        paperWidth: 78,
         kitchenHost: "192.168.1.60",
         kitchenPort: 9100,
         cashierHost: "",
@@ -37,7 +37,7 @@ describe("settings API", () => {
       payload: {
         target: "cashier",
         hotelName: "Palm Court",
-        paperWidth: 80,
+        paperWidth: 78,
         host: "",
         port: 9100,
       },

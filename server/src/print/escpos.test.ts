@@ -1,20 +1,50 @@
 import assert from "node:assert/strict";
 import net from "node:net";
 import { describe, it } from "node:test";
-import { buildDayReport, buildTestSlip, columnsFor } from "./escpos.js";
+import { buildBillSlip, buildDayReport, buildTestSlip, columnsFor } from "./escpos.js";
 import { printerErrorMessage, sendToPrinter } from "./send.js";
 
 describe("test slip", () => {
-  it("uses 48 columns for 80 mm paper and 32 for 58 mm", () => {
-    assert.equal(columnsFor(80), 48);
+  it("uses 46 columns for 78 mm paper and 32 for 58 mm", () => {
+    assert.equal(columnsFor(78), 46);
     assert.equal(columnsFor(58), 32);
+  });
+
+  it("prints the GST total, then the discount, then the net amount", () => {
+    const slip = buildBillSlip({
+      hotelName: "Palm Court",
+      billNo: 12,
+      tableName: "2",
+      paperWidth: 78,
+      now: new Date("2026-11-25T10:00:00Z"),
+      lines: [{ qty: 1, name: "Meals", pricePaise: 18000 }],
+      subtotalPaise: 18000,
+      discountPaise: 1000,
+      gstPercent: 5,
+      taxablePaise: 18000,
+      cgstPaise: 450,
+      sgstPaise: 450,
+      totalPaise: 17900,
+    });
+    const text = slip.toString("ascii");
+    const total = text.indexOf("Total");
+    const cgst = text.indexOf("CGST");
+    const again = text.indexOf("Total", total + 1);
+    const discount = text.indexOf("Discount");
+    const net = text.indexOf("Net Amount");
+    assert.ok(total >= 0 && cgst > total && again > cgst && discount > again && net > discount);
+    assert.match(text, /180\.00/);
+    assert.match(text, /189\.00/);
+    assert.match(text, /10\.00/);
+    assert.match(text, /179\.00/);
+    assert.equal(text.includes("Net Total"), false);
   });
 
   it("includes the hotel name, the printer, and a cut", () => {
     const slip = buildTestSlip({
       hotelName: "Palm Court",
       printerLabel: "Kitchen",
-      paperWidth: 80,
+      paperWidth: 78,
       now: new Date("2026-11-23T11:28:00Z"),
     });
     const text = slip.toString("ascii");
@@ -27,7 +57,7 @@ describe("test slip", () => {
   it("prints the day report with the tally", () => {
     const slip = buildDayReport({
       hotelName: "Palm Court",
-      paperWidth: 80,
+      paperWidth: 78,
       now: new Date("2026-11-25T10:00:00Z"),
       openingCashPaise: 50000,
       openingUpiPaise: 2000,
@@ -64,7 +94,7 @@ describe("printer connection", () => {
     const slip = buildTestSlip({
       hotelName: "Palm Court",
       printerLabel: "Cashier",
-      paperWidth: 80,
+      paperWidth: 78,
       now: new Date("2026-11-23T11:28:00Z"),
     });
     await sendToPrinter("127.0.0.1", address.port, slip);

@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export type PaperWidth = 58 | 80;
+export type PaperWidth = 58 | 78;
 
 export type Settings = {
   hotelName: string;
@@ -25,7 +25,7 @@ export const DEFAULT_SETTINGS: Settings = {
   gstPercent: 5,
   billPreview: true,
   billCopies: 1,
-  paperWidth: 80,
+  paperWidth: 78,
   kitchenHost: "",
   kitchenPort: 9100,
   cashierHost: "",
@@ -53,7 +53,7 @@ export function readSettings(db: DatabaseSync): Settings {
     gstPercent: Number.isFinite(gst) ? gst : DEFAULT_SETTINGS.gstPercent,
     billPreview: stored.get("billPreview") !== "false",
     billCopies: readCopies(stored.get("billCopies")),
-    paperWidth: paper === 58 ? 58 : 80,
+    paperWidth: paper === 58 ? 58 : 78,
     kitchenHost: stored.get("kitchenHost") ?? "",
     kitchenPort: Number.isInteger(kitchenPort) ? kitchenPort : DEFAULT_SETTINGS.kitchenPort,
     cashierHost: stored.get("cashierHost") ?? "",
@@ -111,8 +111,8 @@ export function parseSettings(
   if (typeof billCopies !== "number") return billCopies;
 
   const paperWidth = Number(body.paperWidth);
-  if (paperWidth !== 58 && paperWidth !== 80) {
-    return { ok: false, error: "Paper width must be 58 mm or 80 mm." };
+  if (paperWidth !== 58 && paperWidth !== 78) {
+    return { ok: false, error: "Paper width must be 58 mm or 78 mm." };
   }
 
   const kitchenHost = readHost(body.kitchenHost, "kitchen");

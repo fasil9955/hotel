@@ -404,7 +404,7 @@ function parseTestPrint(input: unknown):
   if (!hotelName) return { ok: false, error: "Enter the hotel name before printing." };
   if (hotelName.length > 40) return { ok: false, error: "Hotel name must be 40 characters or less." };
   const paperWidth = Number(body.paperWidth);
-  if (paperWidth !== 58 && paperWidth !== 80) return { ok: false, error: "Paper width must be 58 mm or 80 mm." };
+  if (paperWidth !== 58 && paperWidth !== 78) return { ok: false, error: "Paper width must be 58 mm or 78 mm." };
   const host = stringField(body, "host").trim();
   if (!host || host.length > 253 || !/^[\w.-]+$/.test(host)) {
     return { ok: false, error: "Enter the printer address before printing." };

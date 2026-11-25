@@ -75,15 +75,15 @@ describe("a meal", () => {
     });
     assert.equal(bill.statusCode, 200);
     assert.equal(bill.json().bill.subtotalPaise, 14500);
-    assert.equal(bill.json().bill.taxablePaise, 14000);
-    assert.equal(bill.json().bill.cgstPaise, 350);
-    assert.equal(bill.json().bill.sgstPaise, 350);
-    assert.equal(bill.json().bill.totalPaise, 14700);
+    assert.equal(bill.json().bill.taxablePaise, 14500);
+    assert.equal(bill.json().bill.cgstPaise, 362);
+    assert.equal(bill.json().bill.sgstPaise, 363);
+    assert.equal(bill.json().bill.totalPaise, 14725);
     assert.equal(bill.json().printed, false);
 
     const report = await app.inject({ method: "GET", url: "/api/reports/today" });
     assert.equal(report.json().count, 1);
-    assert.equal(report.json().cashPaise, 14700);
+    assert.equal(report.json().cashPaise, 14725);
 
     const floor = await app.inject({ method: "GET", url: "/api/floor" });
     assert.equal(floor.json()[0].openOrderId, null);

@@ -202,8 +202,8 @@ export function Setup() {
         <fieldset className="paper">
           <legend>Paper width</legend>
           <div className="segment">
-            <button type="button" aria-pressed={form.paperWidth === 80} onClick={() => setForm({ ...form, paperWidth: 80 })}>
-              80 mm
+            <button type="button" aria-pressed={form.paperWidth === 78} onClick={() => setForm({ ...form, paperWidth: 78 })}>
+              78 mm
             </button>
             <button type="button" aria-pressed={form.paperWidth === 58} onClick={() => setForm({ ...form, paperWidth: 58 })}>
               58 mm
