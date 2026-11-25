@@ -425,6 +425,66 @@ input:focus {
   align-items: start;
 }
 
+.menu-page {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.menu-side {
+  position: sticky;
+  top: 12px;
+}
+
+.menu-cats {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.menu-cats button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  text-align: left;
+}
+
+.menu-cats button span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.menu-cats button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.menu-cats button[aria-pressed="true"] span {
+  color: #fff;
+}
+
+.menu-side .inline {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.menu-side .inline input,
+.menu-side .inline button {
+  width: 100%;
+}
+
 .inline,
 .item-add,
 .row-actions,
@@ -1053,6 +1113,7 @@ input:focus {
   .printer-fields,
   .printers,
   .split,
+  .menu-page,
   .stats,
   .order-board,
   .cashier-board {
@@ -1066,5 +1127,18 @@ input:focus {
 
   .wordmark {
     font-size: 34px;
+  }
+
+  .menu-side {
+    position: static;
+  }
+
+  .menu-cats {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .menu-cats li {
+    flex: 1 1 140px;
   }
 }

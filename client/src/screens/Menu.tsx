@@ -24,12 +24,18 @@ export function Menu() {
   const [error, setError] = useState("");
   const [categoryName, setCategoryName] = useState("");
   const [tableName, setTableName] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  async function load() {
+  async function load(selectId?: number) {
     const [nextCategories, nextItems, nextTables] = await Promise.all([getCategories(), getItems(), getTables()]);
     setCategories(nextCategories);
     setItems(nextItems);
     setTables(nextTables);
+    setSelectedId((current) => {
+      if (selectId !== undefined && nextCategories.some((category) => category.id === selectId)) return selectId;
+      if (current !== null && nextCategories.some((category) => category.id === current)) return current;
+      return nextCategories[0]?.id ?? null;
+    });
   }
 
   useEffect(() => {
@@ -44,54 +50,77 @@ export function Menu() {
   async function run(action: () => Promise<unknown>) {
     setError("");
     try {
-      await action();
-      await load();
+      const result = await action();
+      await load(typeof result === "number" ? result : undefined);
     } catch (caught) {
       setError(message(caught));
     }
   }
 
+  const selected = categories.find((category) => category.id === selectedId) ?? null;
+
   return (
     <>
       {error ? <p className="banner bad">{error}</p> : null}
-      <div className="split">
-        <section>
-          <div className="panel">
-            <h1>Menu</h1>
-            <form
-              className="inline"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const name = categoryName;
-                setCategoryName("");
-                void run(() => createCategory(name));
-              }}
-            >
-              <input
-                value={categoryName}
-                placeholder="Category, such as Mains"
-                onChange={(event) => setCategoryName(event.target.value)}
-              />
-              <button type="submit" className="secondary">
-                Add category
-              </button>
-            </form>
-          </div>
-          {categories.length === 0 ? (
-            <section className="panel">
-              <p className="lede">Add a category, then the dishes in it.</p>
-            </section>
-          ) : null}
-          {categories.map((category) => (
+      <div className="menu-page">
+        <aside className="panel menu-side">
+          <h1>Categories</h1>
+          {categories.length === 0 ? <p className="lede">Add a category, then the dishes in it.</p> : null}
+          <ul className="menu-cats">
+            {categories.map((category) => {
+              const count = items.filter((item) => item.categoryId === category.id).length;
+              return (
+                <li key={category.id}>
+                  <button
+                    type="button"
+                    aria-pressed={category.id === selectedId}
+                    onClick={() => setSelectedId(category.id)}
+                  >
+                    {category.name}
+                    <span>{count}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <form
+            className="inline"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const name = categoryName;
+              setCategoryName("");
+              void run(async () => {
+                const created = await createCategory(name);
+                return created.id;
+              });
+            }}
+          >
+            <input
+              value={categoryName}
+              placeholder="New category"
+              aria-label="New category"
+              onChange={(event) => setCategoryName(event.target.value)}
+            />
+            <button type="submit" className="secondary">
+              Add category
+            </button>
+          </form>
+        </aside>
+        <div>
+          {selected ? (
             <CategoryBlock
-              key={category.id}
-              category={category}
-              items={items.filter((item) => item.categoryId === category.id)}
+              key={selected.id}
+              category={selected}
+              items={items.filter((item) => item.categoryId === selected.id)}
               onChange={run}
             />
-          ))}
-        </section>
-        <section className="panel">
+          ) : (
+            <section className="panel">
+              <h1>Dishes</h1>
+              <p className="lede">Add a category, then the dishes in it.</p>
+            </section>
+          )}
+          <section className="panel">
           <h1>Tables</h1>
           <form
             className="inline"
@@ -129,6 +158,7 @@ export function Menu() {
           </div>
           {tables.length === 0 ? <p className="hint">Add the tables the waiters will tap.</p> : null}
         </section>
+        </div>
       </div>
     </>
   );
@@ -162,11 +192,6 @@ function CategoryBlock({
           Delete
         </button>
       </div>
-      <ul className="menu-list">
-        {items.map((item) => (
-          <DishRow key={item.id} item={item} onChange={onChange} />
-        ))}
-      </ul>
       <form
         className="item-add"
         onSubmit={(event) => {
@@ -209,6 +234,12 @@ function CategoryBlock({
           Add dish
         </button>
       </form>
+      {items.length === 0 ? <p className="hint">No dishes in this category yet.</p> : null}
+      <ul className="menu-list">
+        {items.map((item) => (
+          <DishRow key={item.id} item={item} onChange={onChange} />
+        ))}
+      </ul>
     </section>
   );
 }
