@@ -1,0 +1,20 @@
+{
+  "name": "hotel",
+  "private": true,
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c green,blue \"npm run dev -w @hotel/server\" \"npm run dev -w @hotel/client\"",
+    "build": "npm run build -w @hotel/client && npm run build -w @hotel/server",
+    "start": "npm run start -w @hotel/server",
+    "test": "npm run test -w @hotel/server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "workspaces": [
+    "server",
+    "client"
+  ]
+}
