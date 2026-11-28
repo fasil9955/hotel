@@ -96,6 +96,44 @@ describe("a meal", () => {
     assert.equal(shifted.json().cashPaise, 0);
     assert.equal(shifted.json().upiPaise, 14725);
 
+    const detail = await app.inject({ method: "GET", url: `/api/orders/${order.json().id}` });
+    const meals = (detail.json().lines as Array<{ id: number; itemName: string }>).find((line) => line.itemName === "Meals");
+    const edited = await app.inject({
+      method: "PUT",
+      url: `/api/bills/${bill.json().bill.id}`,
+      payload: { discountRupees: "10", lines: [{ id: meals?.id, qty: 2 }] },
+    });
+    assert.equal(edited.statusCode, 200);
+    assert.equal(edited.json().subtotalPaise, 25000);
+    assert.equal(edited.json().discountPaise, 1000);
+
+    const quietTable = await app.inject({ method: "POST", url: "/api/tables", payload: { name: "9" } });
+    const quietOrder = await app.inject({ method: "POST", url: `/api/tables/${quietTable.json().id}/order` });
+    const quiet = await app.inject({
+      method: "POST",
+      url: `/api/orders/${quietOrder.json().id}/send`,
+      payload: {
+        kitchen: false,
+        lines: [
+          { itemId: item.json().id, qty: 1, note: "" },
+          { itemId: item.json().id, qty: 1, note: "" },
+        ],
+      },
+    });
+    assert.equal(quiet.statusCode, 200);
+    assert.equal(quiet.json().printed, false);
+    assert.match(quiet.json().message, /No kitchen ticket/);
+    assert.equal(quiet.json().order.lines.length, 2);
+    assert.equal(quiet.json().order.lines.every((line: { kotPrinted: boolean }) => line.kotPrinted), true);
+    assert.equal(sent.length, 2);
+    const tabletSend = await app.inject({
+      method: "POST",
+      url: `/api/orders/${quietOrder.json().id}/send`,
+      payload: { kitchen: false, lines: [{ itemId: item.json().id, qty: 1, note: "" }] },
+      remoteAddress: "192.168.1.40",
+    });
+    assert.equal(tabletSend.statusCode, 403);
+
     const floor = await app.inject({ method: "GET", url: "/api/floor" });
     assert.equal(floor.json()[0].openOrderId, null);
 

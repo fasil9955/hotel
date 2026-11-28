@@ -43,9 +43,9 @@ export type Expense = {
   employeeName: string;
 };
 export type DailyExpense = { id: number; title: string; lastAmountPaise: number; todayPaise: number };
-export type AttendanceRow = { employeeId: number; name: string; status: "present" | "absent" | "" };
+export type AttendanceRow = { employeeId: number; name: string; status: "present" | "half" | "absent" | "" };
 
-export type AttendanceMark = "present" | "absent" | "";
+export type AttendanceMark = "present" | "half" | "absent" | "";
 
 export type MonthAttendance = {
   month: string;
@@ -261,6 +261,7 @@ export function employeeLedger(db: DatabaseSync, id: number, now = new Date()): 
   for (const mark of marks) {
     const month = ensure(mark.day.slice(0, 7));
     if (mark.status === "present") month.present += 1;
+    else if (mark.status === "half") month.present += 0.5;
     else if (mark.status === "absent") month.absent += 1;
   }
   const payments = db
@@ -279,7 +280,12 @@ export function employeeLedger(db: DatabaseSync, id: number, now = new Date()): 
   const salaryPaise = Number(person.salary_paise);
   const extraPaise = Number(person.extra_paise);
   const month = monthKey(now);
-  const present = marks.filter((mark) => mark.status === "present" && mark.day.startsWith(month)).length;
+  const present = marks.reduce((total, mark) => {
+    if (!mark.day.startsWith(month)) return total;
+    if (mark.status === "present") return total + 1;
+    if (mark.status === "half") return total + 0.5;
+    return total;
+  }, 0);
   const earnedPaise = earnedSalary(salaryPaise, present, daysInMonth(now));
   const givenMonthPaise = months.get(month)?.givenPaise ?? 0;
   return {
@@ -311,7 +317,7 @@ export function listAttendance(db: DatabaseSync, now = new Date()): AttendanceRo
   return rows.map((row) => ({
     employeeId: row.employee_id,
     name: row.name,
-    status: row.status === "present" || row.status === "absent" ? row.status : "",
+    status: row.status === "present" || row.status === "half" || row.status === "absent" ? row.status : "",
   }));
 }
 
@@ -322,7 +328,7 @@ export function monthAttendance(db: DatabaseSync, now = new Date()): MonthAttend
     .all(days[0], days[days.length - 1]) as Array<{ employee_id: number; day: string; status: string }>;
   const byEmployee = new Map<number, Map<string, AttendanceMark>>();
   for (const mark of marks) {
-    if (mark.status !== "present" && mark.status !== "absent") continue;
+    if (mark.status !== "present" && mark.status !== "half" && mark.status !== "absent") continue;
     const saved = byEmployee.get(mark.employee_id) ?? new Map<string, AttendanceMark>();
     saved.set(mark.day, mark.status);
     byEmployee.set(mark.employee_id, saved);
@@ -346,7 +352,9 @@ export function monthAttendance(db: DatabaseSync, now = new Date()): MonthAttend
 }
 
 export function markAttendance(db: DatabaseSync, employeeId: number, status: string, now = new Date()): MonthAttendance {
-  if (status !== "present" && status !== "absent") throw new HttpError("Mark present or absent.", 400);
+  if (status !== "present" && status !== "half" && status !== "absent") {
+    throw new HttpError("Mark present, half day, or absent.", 400);
+  }
   const employee = db.prepare("SELECT id FROM employees WHERE id = ? AND active = 1").get(employeeId);
   if (!employee) throw new HttpError("That employee was not found.", 404);
   db.prepare(
@@ -572,6 +580,8 @@ export async function printDayReport(
         openingCashPaise: figures.openingCashPaise,
         openingUpiPaise: figures.openingUpiPaise,
         salesPaise: figures.salesPaise,
+        salesCashPaise: figures.cashPaise,
+        salesUpiPaise: figures.upiPaise,
         expensePaise: figures.expensePaise,
         expenseCashPaise: figures.expenseCashPaise,
         expenseUpiPaise: figures.expenseUpiPaise,
@@ -604,7 +614,7 @@ function liveClose(db: DatabaseSync, now: Date): Omit<DayClose, "day" | "closedA
       expensePaise: expenses.totalPaise,
       expenseCashPaise: expenses.cashPaise,
       expenseUpiPaise: expenses.upiPaise,
-      presentCount: attendance.filter((row) => row.status === "present").length,
+      presentCount: attendance.filter((row) => row.status === "present" || row.status === "half").length,
       staffCount: attendance.length,
     },
     opening.cash,
@@ -893,9 +903,10 @@ function daysInMonth(now: Date): number {
 function presentCounts(db: DatabaseSync, month: string): Map<number, number> {
   const rows = db
     .prepare(
-      `SELECT employee_id, COUNT(*) AS present
+      `SELECT employee_id,
+              SUM(CASE status WHEN 'present' THEN 1.0 WHEN 'half' THEN 0.5 ELSE 0 END) AS present
        FROM attendance
-       WHERE status = 'present' AND day LIKE ?
+       WHERE status IN ('present', 'half') AND day LIKE ?
        GROUP BY employee_id`,
     )
     .all(`${month}-%`) as Array<{ employee_id: number; present: number }>;

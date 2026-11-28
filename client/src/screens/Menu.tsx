@@ -14,6 +14,7 @@ import {
   type DiningTable,
   type MenuItem,
 } from "../api";
+import { useConfirm } from "../confirm";
 import { useSync } from "../live";
 import { formatRupees } from "../money";
 
@@ -25,6 +26,7 @@ export function Menu() {
   const [categoryName, setCategoryName] = useState("");
   const [tableName, setTableName] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const { confirm, dialog } = useConfirm();
 
   async function load(selectId?: number) {
     const [nextCategories, nextItems, nextTables] = await Promise.all([getCategories(), getItems(), getTables()]);
@@ -61,6 +63,7 @@ export function Menu() {
 
   return (
     <>
+      {dialog}
       {error ? <p className="banner bad">{error}</p> : null}
       <div className="menu-page">
         <aside className="panel menu-side">
@@ -113,6 +116,7 @@ export function Menu() {
               category={selected}
               items={items.filter((item) => item.categoryId === selected.id)}
               onChange={run}
+              confirm={confirm}
             />
           ) : (
             <section className="panel">
@@ -147,9 +151,7 @@ export function Menu() {
                 <button
                   type="button"
                   className="text"
-                  onClick={() => {
-                    if (window.confirm(`Remove table ${table.name}?`)) void run(() => deleteTable(table.id));
-                  }}
+                  onClick={() => confirm(`Remove table ${table.name}?`, () => void run(() => deleteTable(table.id)))}
                 >
                   Remove
                 </button>
@@ -168,10 +170,12 @@ function CategoryBlock({
   category,
   items,
   onChange,
+  confirm,
 }: {
   category: Category;
   items: MenuItem[];
   onChange: (action: () => Promise<unknown>) => Promise<void>;
+  confirm: (message: string, onYes: () => void) => void;
 }) {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
@@ -185,9 +189,7 @@ function CategoryBlock({
         <button
           type="button"
           className="text"
-          onClick={() => {
-            if (window.confirm(`Delete ${category.name}?`)) void onChange(() => deleteCategory(category.id));
-          }}
+          onClick={() => confirm(`Delete ${category.name}?`, () => void onChange(() => deleteCategory(category.id)), )}
         >
           Delete
         </button>
@@ -237,7 +239,7 @@ function CategoryBlock({
       {items.length === 0 ? <p className="hint">No dishes in this category yet.</p> : null}
       <ul className="menu-list">
         {items.map((item) => (
-          <DishRow key={item.id} item={item} onChange={onChange} />
+          <DishRow key={item.id} item={item} onChange={onChange} confirm={confirm} />
         ))}
       </ul>
     </section>
@@ -247,9 +249,11 @@ function CategoryBlock({
 function DishRow({
   item,
   onChange,
+  confirm,
 }: {
   item: MenuItem;
   onChange: (action: () => Promise<unknown>) => Promise<void>;
+  confirm: (message: string, onYes: () => void) => void;
 }) {
   const [tablePrice, setTablePrice] = useState(rupeeInput(item.pricePaise));
   const [parcelPrice, setParcelPrice] = useState(rupeeInput(item.parcelPricePaise));
@@ -295,9 +299,7 @@ function DishRow({
         <button
           type="button"
           className="text"
-          onClick={() => {
-            if (window.confirm(`Delete ${item.name}?`)) void onChange(() => deleteItem(item.id));
-          }}
+          onClick={() => confirm(`Delete ${item.name}?`, () => void onChange(() => deleteItem(item.id)))}
         >
           Delete
         </button>

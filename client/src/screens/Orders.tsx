@@ -15,6 +15,7 @@ import {
   type MenuItem,
   type OrderDetail,
 } from "../api";
+import { useConfirm } from "../confirm";
 import { useSync } from "../live";
 import { formatRupees } from "../money";
 import { ParcelName } from "./ParcelName";
@@ -34,6 +35,7 @@ export function Orders({ tablet = false }: { tablet?: boolean }) {
   const [busy, setBusy] = useState(false);
   const orderRef = useRef<OrderDetail | null>(null);
   const syncTicket = useRef(0);
+  const { confirm, dialog } = useConfirm();
 
   function showOrder(next: OrderDetail | null) {
     orderRef.current = next;
@@ -157,7 +159,7 @@ export function Orders({ tablet = false }: { tablet?: boolean }) {
     }
   }
 
-  async function send() {
+  async function send(kitchen = true) {
     if (!order) return;
     setBusy(true);
     setError("");
@@ -166,6 +168,7 @@ export function Orders({ tablet = false }: { tablet?: boolean }) {
       const result = await sendOrder(
         order.id,
         cart.map((line) => ({ itemId: line.itemId, qty: line.qty, note: line.note })),
+        kitchen,
       );
       showOrder(result.order);
       setCart([]);
@@ -182,6 +185,7 @@ export function Orders({ tablet = false }: { tablet?: boolean }) {
     const parcels = tables?.filter((table) => table.kind === "parcel") ?? [];
     return (
       <>
+        {dialog}
         {error ? <p className="banner bad">{error}</p> : null}
         {notice ? <p className="banner">{notice}</p> : null}
         <section className={tablet ? "panel tables-panel" : "panel"}>
@@ -215,7 +219,11 @@ export function Orders({ tablet = false }: { tablet?: boolean }) {
                   <span>{table.openOrderId ? `${formatRupees(table.totalPaise)} · ${table.itemCount}` : "Free"}</span>
                 </button>
                 {tablet || table.openOrderId ? null : (
-                  <button type="button" className="text" onClick={() => void removeParcel(table.id)}>
+                  <button
+                    type="button"
+                    className="text danger"
+                    onClick={() => confirm(`Remove ${table.name}?`, () => void removeParcel(table.id))}
+                  >
                     Remove
                   </button>
                 )}
@@ -259,6 +267,7 @@ export function Orders({ tablet = false }: { tablet?: boolean }) {
 
   return (
     <>
+      {dialog}
       {error ? <p className="banner bad">{error}</p> : null}
       {tablet ? (
         <button type="button" className="back-float" onClick={leaveTable}>
@@ -318,11 +327,17 @@ export function Orders({ tablet = false }: { tablet?: boolean }) {
                 type="button"
                 className="primary"
                 disabled={busy || (tablet ? cart.length === 0 : cart.length === 0 && !pending)}
-                onClick={() => void send()}
+                onClick={() => void send(true)}
               >
                 {busy ? "Sending…" : cartCount ? `Send ${cartCount} to kitchen` : tablet ? "Send to kitchen" : "Print kitchen ticket"}
               </button>
+              {tablet ? null : (
+                <button type="button" className="secondary" disabled={busy || cart.length === 0} onClick={() => void send(false)}>
+                  Add to bill
+                </button>
+              )}
             </div>
+            {tablet ? null : <p className="hint">Add to bill keeps these dishes off the kitchen ticket.</p>}
           </section>
 
           {order.lines.length ? (
@@ -344,11 +359,13 @@ export function Orders({ tablet = false }: { tablet?: boolean }) {
                         type="button"
                         className="icon-btn"
                         aria-label={`Remove ${line.itemName}`}
-                        onClick={() => {
-                          removeOrderLine(order.id, line.id)
-                            .then(showOrder)
-                            .catch((caught: unknown) => setError(text(caught)));
-                        }}
+                        onClick={() =>
+                          confirm(`Remove ${line.qty} ${line.itemName}?`, () => {
+                            removeOrderLine(order.id, line.id)
+                              .then(showOrder)
+                              .catch((caught: unknown) => setError(text(caught)));
+                          })
+                        }
                       >
                         <TrashIcon />
                       </button>

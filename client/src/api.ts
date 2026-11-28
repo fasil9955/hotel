@@ -257,8 +257,9 @@ export function deleteParcel(id: number): Promise<void> {
 export function sendOrder(
   orderId: number,
   lines: Array<{ itemId: number; qty: number; note: string }>,
+  kitchen = true,
 ): Promise<SendResult> {
-  return api(`/api/orders/${orderId}/send`, { method: "POST", ...json({ lines }) });
+  return api(`/api/orders/${orderId}/send`, { method: "POST", ...json({ lines, kitchen }) });
 }
 
 export function removeOrderLine(orderId: number, lineId: number): Promise<OrderDetail> {
@@ -295,6 +296,13 @@ export function acceptCancellation(token: string, id: number): Promise<Cancellat
 
 export function getToday(): Promise<TodayReport> {
   return api("/api/reports/today");
+}
+
+export function editBill(
+  billId: number,
+  change: { discountRupees: string; payment: "cash" | "upi" },
+): Promise<Bill> {
+  return api(`/api/bills/${billId}`, { method: "PUT", ...json(change) });
 }
 
 export function changeBillPayment(billId: number, payment: "cash" | "upi"): Promise<Bill> {
@@ -361,7 +369,7 @@ export type DailyExpense = { id: number; title: string; lastAmountPaise: number;
 
 export type ExpenseList = { expenses: Expense[]; totalPaise: number; cashPaise: number; upiPaise: number };
 
-export type AttendanceMark = "present" | "absent" | "";
+export type AttendanceMark = "present" | "half" | "absent" | "";
 
 export type MonthAttendance = {
   month: string;
@@ -442,7 +450,7 @@ export function getAttendance(): Promise<MonthAttendance> {
   return api("/api/attendance");
 }
 
-export function markAttendance(employeeId: number, status: "present" | "absent"): Promise<MonthAttendance> {
+export function markAttendance(employeeId: number, status: "present" | "half" | "absent"): Promise<MonthAttendance> {
   return api("/api/attendance", { method: "POST", ...json({ employeeId, status }) });
 }
 

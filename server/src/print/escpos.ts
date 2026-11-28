@@ -138,7 +138,7 @@ export function buildBillSlip(options: {
     moneyRow("Item", "Rate", "Qty", "Amount", columns),
     "\n",
   );
-  for (const line of options.lines) {
+  for (const line of groupedBillLines(options.lines)) {
     body.push(
       moneyRow(line.name, formatPaise(line.pricePaise), String(line.qty), formatPaise(line.pricePaise * line.qty), columns),
       "\n",
@@ -187,6 +187,8 @@ export function buildDayReport(options: {
   openingCashPaise: number;
   openingUpiPaise: number;
   salesPaise: number;
+  salesCashPaise: number;
+  salesUpiPaise: number;
   expensePaise: number;
   expenseCashPaise: number;
   expenseUpiPaise: number;
@@ -222,6 +224,10 @@ export function buildDayReport(options: {
     rule,
     "\n",
     pair("Total business", formatPaise(options.salesPaise), columns),
+    "\n",
+    pair("GPay", formatPaise(options.salesUpiPaise), columns),
+    "\n",
+    pair("Cash", formatPaise(options.salesCashPaise), columns),
     "\n",
     pair("Expenses", formatPaise(options.expensePaise), columns),
     "\n",
@@ -267,6 +273,18 @@ function formatBillWhen(now: Date): string {
   const suffix = hours24 >= 12 ? "PM" : "AM";
   const hours = hours24 % 12 || 12;
   return `${day}-${month}-${now.getFullYear()} ${hours}:${minutes}${suffix}`;
+}
+
+function groupedBillLines(
+  lines: Array<{ qty: number; name: string; pricePaise: number }>,
+): Array<{ qty: number; name: string; pricePaise: number }> {
+  const groups: Array<{ qty: number; name: string; pricePaise: number }> = [];
+  for (const line of lines) {
+    const found = groups.find((group) => group.name === line.name && group.pricePaise === line.pricePaise);
+    if (found) found.qty += line.qty;
+    else groups.push({ qty: line.qty, name: line.name, pricePaise: line.pricePaise });
+  }
+  return groups;
 }
 
 function formatWhen(now: Date): string {

@@ -42,6 +42,32 @@ describe("test slip", () => {
     assert.equal(text.includes("Net Total"), false);
   });
 
+  it("prints the same dish once with the total quantity", () => {
+    const slip = buildBillSlip({
+      hotelName: "Palm Court",
+      billNo: 3,
+      tableName: "2",
+      paperWidth: 78,
+      now: new Date("2026-11-25T10:00:00Z"),
+      lines: [
+        { qty: 1, name: "Chicken Biryani", pricePaise: 18000 },
+        { qty: 1, name: "Chicken Biryani", pricePaise: 18000 },
+        { qty: 2, name: "Chicken Biryani", pricePaise: 18000 },
+      ],
+      subtotalPaise: 72000,
+      discountPaise: 0,
+      gstPercent: 5,
+      taxablePaise: 72000,
+      cgstPaise: 1800,
+      sgstPaise: 1800,
+      totalPaise: 75600,
+      payment: "cash",
+    });
+    const text = slip.toString("ascii");
+    assert.equal(text.split("Chicken Biryani").length - 1, 1);
+    assert.match(text, /720\.00/);
+  });
+
   it("includes the hotel name, the printer, and a cut", () => {
     const slip = buildTestSlip({
       hotelName: "Palm Court",
@@ -64,6 +90,8 @@ describe("test slip", () => {
       openingCashPaise: 50000,
       openingUpiPaise: 2000,
       salesPaise: 36000,
+      salesCashPaise: 16000,
+      salesUpiPaise: 20000,
       expensePaise: 4000,
       expenseCashPaise: 4000,
       expenseUpiPaise: 0,

@@ -1,14 +1,16 @@
 :root {
   color-scheme: light;
-  --bg: #f3efe6;
+  --bg: #f6f1e8;
   --surface: #fffdf8;
-  --ink: #1c1915;
-  --muted: #6f675e;
-  --line: #e4d9c8;
-  --accent: #0f6e56;
-  --accent-press: #0c5946;
-  --danger: #8d2c2c;
-  --ok: #0f6e56;
+  --ink: #1a140e;
+  --muted: #5c5348;
+  --line: #ddcfc0;
+  --accent: #0c6a4c;
+  --accent-press: #094e38;
+  --danger: #9d1c1c;
+  --ok: #0c6a4c;
+  --money: #0c3d30;
+  --busy: #a86400;
   --serif: Georgia, "Palatino Linotype", serif;
   --sans: "Segoe UI", sans-serif;
 }
@@ -478,7 +480,7 @@ input:focus {
 
 .sheet th.today,
 .sheet td.today {
-  min-width: 72px;
+  min-width: 116px;
   background: #e7f3ee;
 }
 
@@ -490,8 +492,14 @@ input:focus {
   color: var(--ok);
 }
 
+.cell-mark.half {
+  color: var(--busy);
+  font-weight: 700;
+}
+
 .cell-mark.absent {
   color: var(--danger);
+  font-weight: 700;
 }
 
 .today-marks {
@@ -510,9 +518,22 @@ input:focus {
 }
 
 .today-marks button[aria-pressed="true"] {
-  background: var(--ink);
-  border-color: var(--ink);
   color: #fff;
+}
+
+.today-marks button[aria-label^="Present"][aria-pressed="true"] {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.today-marks button[aria-label^="Half"][aria-pressed="true"] {
+  background: var(--busy);
+  border-color: var(--busy);
+}
+
+.today-marks button[aria-label^="Absent"][aria-pressed="true"] {
+  background: var(--danger);
+  border-color: var(--danger);
 }
 
 .marks {
@@ -754,20 +775,126 @@ input:focus {
 }
 
 .book-row {
-  display: flex;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: max-content minmax(28px, 1fr) max-content;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 48px;
+  gap: 8px;
+  width: min(460px, 100%);
+  min-height: 44px;
   margin: 0;
+  padding: 4px 0;
+  border-bottom: 1px solid #e4d5c3;
   color: var(--ink);
   font-size: 16px;
+}
+
+.pair-line {
+  border-bottom: 2px dotted #8d7b68;
+  min-width: 24px;
+  height: 0;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: max-content minmax(20px, 1fr) max-content;
+  align-items: center;
+  gap: 8px;
+  width: min(420px, 100%);
+}
+
+.menu-list li.pair-row {
+  justify-content: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.expense-boxes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.expense-boxes .box {
+  margin: 0;
+  padding: 8px 10px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.expense-boxes .box input,
+.expense-boxes .box select {
+  height: 40px;
+  margin-top: 4px;
+  font-weight: 650;
+}
+
+.box.category {
+  background: #e7f0ff;
+  color: #1d3f86;
+}
+
+.box.description {
+  background: #fff4dc;
+  color: #6d4b00;
+}
+
+.box.amount {
+  background: #e5f6ee;
+  color: #0c513c;
+}
+
+.danger-btn {
+  min-height: 48px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--danger);
+  color: #fff;
+  font-weight: 700;
+}
+
+.qty-box {
+  width: 72px;
+  height: 40px;
+  text-align: center;
 }
 
 .book-row input {
   width: 150px;
   text-align: right;
+}
+
+.book-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 22px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.book-line label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.book-line input {
+  width: 120px;
+  height: 40px;
+  text-align: right;
+}
+
+.book-line strong {
+  color: var(--money);
 }
 
 .day-book .hint {
@@ -781,12 +908,15 @@ input:focus {
 }
 
 .account-lines li {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 4px 0;
-  color: var(--muted);
-  font-size: 14px;
+  display: grid;
+  grid-template-columns: max-content minmax(28px, 1fr) max-content;
+  align-items: center;
+  gap: 8px;
+  width: min(460px, 100%);
+  padding: 8px 0;
+  border-bottom: 1px solid #e4d5c3;
+  color: var(--ink);
+  font-size: 16px;
 }
 
 .veg {
@@ -814,9 +944,9 @@ input:focus {
   min-height: 132px;
   padding: 16px;
   font-size: 18px;
-  border: 1px solid var(--line);
+  border: 2px solid #7dba98;
   border-radius: 14px;
-  background: #fff;
+  background: #e7f6ee;
   text-align: left;
 }
 
@@ -838,9 +968,19 @@ input:focus {
 }
 
 .table-tile.busy {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: #fff;
+  background: #fff3d6;
+  border-color: #e0a23a;
+  color: var(--ink);
+}
+
+.table-tile.busy span {
+  color: #7a4e00;
+  font-weight: 700;
+}
+
+.order-line-price,
+.total {
+  color: var(--money);
 }
 
 .table-tile.static {

@@ -57,6 +57,7 @@ import {
   removeLine,
   setParcelName,
   changeBillPayment,
+  editBill,
   reprintBill,
   requestCancellation,
   sendToKitchen,
@@ -232,6 +233,9 @@ export function registerRoutes(
     return order;
   });
   app.post("/api/orders/:id/send", async (request) => {
+    if (record(request.body).kitchen === false && !isCashierRequest(request)) {
+      throw new HttpError("Tablets send items to the kitchen.", 403);
+    }
     const result = await sendToKitchen(db, routeId(request.params), request.body, send);
     publish("floor");
     return result;
@@ -257,6 +261,11 @@ export function registerRoutes(
     return result;
   });
   app.post("/api/bills/:id/print", async (request) => reprintBill(db, routeId(request.params), send));
+  app.put("/api/bills/:id", async (request) => {
+    const result = editBill(db, routeId(request.params), request.body);
+    publish("day");
+    return result;
+  });
   app.put("/api/bills/:id/payment", async (request) => {
     const result = changeBillPayment(db, routeId(request.params), record(request.body).payment);
     publish("day");

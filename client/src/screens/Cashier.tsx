@@ -10,6 +10,8 @@ import {
   type OrderDetail,
   type Settings,
 } from "../api";
+import { useConfirm } from "../confirm";
+import { groupBillLines } from "../group";
 import { useSync } from "../live";
 import { formatBillAmount, formatRupees } from "../money";
 import { ParcelName } from "./ParcelName";
@@ -32,6 +34,7 @@ export function Cashier() {
   const orderRef = useRef<OrderDetail | null>(null);
   const syncTicket = useRef(0);
   const selectTicket = useRef(0);
+  const { confirm, dialog } = useConfirm();
 
   async function load() {
     setTables(await getFloor());
@@ -120,11 +123,13 @@ export function Cashier() {
     if (!settings.billPreview) setPreview(false);
   }
 
-  async function removeLine(lineId: number) {
+  async function removeLines(lineIds: number[]) {
     if (!order) return;
     setError("");
     try {
-      showOrder(await removeOrderLine(order.id, lineId));
+      let next = order;
+      for (const lineId of lineIds) next = await removeOrderLine(order.id, lineId);
+      showOrder(next);
       await load();
     } catch (caught) {
       setError(text(caught));
@@ -152,6 +157,7 @@ export function Cashier() {
 
   return (
     <>
+      {dialog}
       {error ? <p className="banner bad">{error}</p> : null}
       <div className="cashier-board">
         <section className="panel">
@@ -175,21 +181,20 @@ export function Cashier() {
               {order.kind === "parcel" ? <ParcelName order={order} onSaved={showOrder} /> : null}
               {order.lines.length === 0 ? <p className="hint">No items on this order yet.</p> : null}
               <ul className="order-lines">
-                {order.lines.map((line) => (
-                  <li key={line.id}>
-                    <div className="order-line-main">
+                {groupBillLines(order.lines).map((line) => (
+                  <li key={line.key} className="pair-row">
+                    <span className="pair">
                       <strong>
-                        {line.qty} {line.itemName}
+                        {line.qty} {line.name}
                       </strong>
-                      {line.note ? <span>{line.note}</span> : null}
-                      {line.kotPrinted ? <span>Sent to kitchen</span> : null}
-                    </div>
-                    <span className="order-line-price">{formatRupees(line.pricePaise * line.qty)}</span>
+                      <span className="pair-line" />
+                      <span className="order-line-price">{formatRupees(line.pricePaise * line.qty)}</span>
+                    </span>
                     <button
                       type="button"
                       className="icon-btn"
-                      aria-label={`Remove ${line.itemName}`}
-                      onClick={() => void removeLine(line.id)}
+                      aria-label={`Remove ${line.name}`}
+                      onClick={() => confirm(`Remove ${line.qty} ${line.name}?`, () => void removeLines(line.ids))}
                     >
                       <TrashIcon />
                     </button>
@@ -284,9 +289,9 @@ export function Cashier() {
                     <span>Qty</span>
                     <span>Amount</span>
                   </p>
-                  {order.lines.map((line) => (
-                    <p key={line.id} className="preview-cols">
-                      <span>{line.itemName}</span>
+                  {groupBillLines(order.lines).map((line) => (
+                    <p key={line.key} className="preview-cols">
+                      <span>{line.name}</span>
                       <span>{formatBillAmount(line.pricePaise)}</span>
                       <span>{line.qty}</span>
                       <span>{formatBillAmount(line.pricePaise * line.qty)}</span>

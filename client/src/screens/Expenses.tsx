@@ -10,6 +10,8 @@ import {
   type Employee,
   type ExpenseList,
 } from "../api";
+import { useConfirm } from "../confirm";
+import { groupExpenses } from "../group";
 import { formatRupees } from "../money";
 
 export function Expenses() {
@@ -26,6 +28,7 @@ export function Expenses() {
   const [newCategory, setNewCategory] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
+  const { confirm, dialog } = useConfirm();
 
   useEffect(() => {
     Promise.all([getExpenses(), getDailyExpenses(), getEmployees()])
@@ -84,24 +87,27 @@ export function Expenses() {
     }
   }
 
-  async function remove(id: number) {
+  async function remove(ids: number[]) {
     setError("");
     try {
-      await removeExpense(id);
+      for (const id of ids) await removeExpense(id);
       await refresh();
     } catch (caught) {
       setError(text(caught));
     }
   }
 
+  const groups = groupExpenses(list?.expenses ?? []);
+
   return (
     <>
+      {dialog}
       {error ? <p className="banner bad">{error}</p> : null}
       <section className="panel">
         <h1>Expenses</h1>
-        <p className="hint">Pick a category, enter the amount, then choose cash, GPay, or a mix of both.</p>
-        <div className="fields">
-          <label>
+        <p className="hint">Choose the category, write what it was for, then the amount. Same category is added together below.</p>
+        <div className="expense-boxes">
+          <label className="box category">
             Category
             <select
               value={category}
@@ -120,29 +126,32 @@ export function Expenses() {
               <option value="other">Other</option>
             </select>
           </label>
-          <label>
-            Amount in rupees
-            <input inputMode="decimal" value={amount} placeholder="0" onChange={(event) => setAmount(event.target.value)} />
-          </label>
-          {category === "employees" ? (
-            <label className="span-2">
-              Employee
+          <label className="box description">
+            Description
+            {category === "employees" ? (
               <select value={employeeId} onChange={(event) => setEmployeeId(event.target.value)}>
-                <option value="">Choose</option>
+                <option value="">Choose employee</option>
                 {staff.map((person) => (
                   <option key={person.id} value={person.id}>
                     {person.name}
                   </option>
                 ))}
               </select>
-            </label>
-          ) : null}
-          {category === "other" ? (
-            <label className="span-2">
-              Description
-              <input value={description} maxLength={40} onChange={(event) => setDescription(event.target.value)} />
-            </label>
-          ) : null}
+            ) : category === "other" ? (
+              <input
+                value={description}
+                maxLength={40}
+                placeholder="What it was for"
+                onChange={(event) => setDescription(event.target.value)}
+              />
+            ) : (
+              <input value={categories.find((item) => `daily:${item.id}` === category)?.title ?? ""} readOnly />
+            )}
+          </label>
+          <label className="box amount">
+            Amount
+            <input inputMode="decimal" value={amount} placeholder="0" onChange={(event) => setAmount(event.target.value)} />
+          </label>
         </div>
         <div className="pay-choice" role="group" aria-label="How it was paid">
           <button type="button" aria-pressed={payment === "cash"} onClick={() => setPayment("cash")}>
@@ -194,19 +203,23 @@ export function Expenses() {
         ) : null}
         {list && list.expenses.length === 0 ? <p className="hint">No expenses yet today.</p> : null}
         <ul className="menu-list">
-          {list?.expenses.map((expense) => (
-            <li key={expense.id}>
-              <strong>
-                {expense.title}
-                {expense.employeeName ? <span className="who"> to {expense.employeeName}</span> : null}
-              </strong>
-              <span>
-                {formatRupees(expense.amountPaise)}
-                <span className="who">{paidWith(expense)}</span>
-                <button type="button" className="text danger" onClick={() => void remove(expense.id)}>
-                  Remove
-                </button>
+          {groups.map((expense) => (
+            <li key={expense.key} className="pair-row">
+              <span className="pair">
+                <span>{expense.title}</span>
+                <span className="pair-line" />
+                <strong>{formatRupees(expense.amountPaise)}</strong>
               </span>
+              <span className="who">{paidWith(expense)}</span>
+              <button
+                type="button"
+                className="text danger"
+                onClick={() =>
+                  confirm(`Remove ${expense.title}, ${formatRupees(expense.amountPaise)}?`, () => void remove(expense.ids))
+                }
+              >
+                Remove
+              </button>
             </li>
           ))}
         </ul>
@@ -237,9 +250,11 @@ function expenseFrom(
   return { title: named.title };
 }
 
-function paidWith(expense: { payment: "cash" | "upi" | "mix"; cashPaise: number; upiPaise: number }): string {
-  if (expense.payment === "upi") return "GPay";
-  if (expense.payment === "mix") return `Cash ${formatRupees(expense.cashPaise)} · GPay ${formatRupees(expense.upiPaise)}`;
+function paidWith(expense: { cashPaise: number; upiPaise: number }): string {
+  if (expense.cashPaise > 0 && expense.upiPaise > 0) {
+    return `Cash ${formatRupees(expense.cashPaise)} · GPay ${formatRupees(expense.upiPaise)}`;
+  }
+  if (expense.upiPaise > 0) return "GPay";
   return "Cash";
 }
 

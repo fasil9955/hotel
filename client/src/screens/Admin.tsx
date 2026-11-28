@@ -20,6 +20,8 @@ import {
   type EmployeeLedger,
   type Expense,
 } from "../api";
+import { useConfirm } from "../confirm";
+import { groupExpenses } from "../group";
 import { formatRupees } from "../money";
 
 type AdminPage = "employees" | "cancellations" | "day";
@@ -125,6 +127,7 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<"save" | "close" | "print" | null>(null);
   const [printNote, setPrintNote] = useState<{ printed: boolean; message: string } | null>(null);
+  const { confirm, dialog } = useConfirm();
   const [selectedDay, setSelectedDay] = useState("");
 
   useEffect(() => {
@@ -331,6 +334,7 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
 
   return (
     <>
+      {dialog}
       {error && !adding && !editing ? <p className="banner bad">{error}</p> : null}
       {page === "employees" ? (
       <section className="panel">
@@ -386,7 +390,11 @@ function Dashboard({ token, page, onLock }: { token: string; page: AdminPage; on
                 >
                   Edit
                 </button>
-                <button type="button" className="text danger" onClick={() => void remove(employee.id)}>
+                <button
+                  type="button"
+                  className="text danger"
+                  onClick={() => confirm(`Remove ${employee.name}?`, () => void remove(employee.id))}
+                >
                   Remove
                 </button>
               </div>
@@ -749,61 +757,76 @@ function DayBook({
       <section>
         <h2>Opening balance</h2>
         {closed || figures.openingLocked ? (
-          <>
-            <p className="book-row">
-              <span>GPay</span>
-              <strong>{formatRupees(upi)}</strong>
-            </p>
-            <p className="book-row">
-              <span>Cash</span>
-              <strong>{formatRupees(cash)}</strong>
-            </p>
-            {figures.openingLocked && !closed ? <p className="hint">From the previous day's closing balance.</p> : null}
-          </>
+          <p className="book-line">
+            <span>
+              GPay <strong>{formatRupees(upi)}</strong>
+            </span>
+            <span>
+              Cash <strong>{formatRupees(cash)}</strong>
+            </span>
+          </p>
         ) : (
-          <>
-            <label className="book-row">
+          <div className="book-line">
+            <label>
               GPay
               <input inputMode="decimal" value={openingUpi} onChange={(event) => onUpi(event.target.value)} onBlur={onSaveOpening} />
             </label>
-            <label className="book-row">
+            <label>
               Cash
               <input inputMode="decimal" value={openingCash} onChange={(event) => onCash(event.target.value)} onBlur={onSaveOpening} />
             </label>
-            <p className="hint">Type this for the first day. After a day is closed, the next opening is that closing balance.</p>
-          </>
+          </div>
         )}
+        {figures.openingLocked && !closed ? <p className="hint">From the previous day's closing balance.</p> : null}
+        {!closed && !figures.openingLocked ? (
+          <p className="hint">Type this for the first day. After a day is closed, the next opening is that closing balance.</p>
+        ) : null}
       </section>
       <section>
         <h2>Total business</h2>
-        <p className="book-row">
-          <span>{figures.billCount === 1 ? "1 bill" : `${figures.billCount} bills`}</span>
-          <strong>{formatRupees(figures.salesPaise)}</strong>
+        <p className="book-line">
+          <span>
+            {figures.billCount === 1 ? "1 bill" : `${figures.billCount} bills`} <strong>{formatRupees(figures.salesPaise)}</strong>
+          </span>
+          <span>
+            GPay <strong>{formatRupees(figures.upiPaise)}</strong>
+          </span>
+          <span>
+            Cash <strong>{formatRupees(figures.cashPaise)}</strong>
+          </span>
+          {figures.cardPaise > 0 ? (
+            <span>
+              Card <strong>{formatRupees(figures.cardPaise)}</strong>
+            </span>
+          ) : null}
         </p>
       </section>
       <section>
         <h2>Expenses</h2>
-        <p className="book-row">
-          <span>Cash</span>
-          <strong>{formatRupees(figures.expenseCashPaise)}</strong>
-        </p>
-        <p className="book-row">
-          <span>GPay</span>
-          <strong>{formatRupees(figures.expenseUpiPaise)}</strong>
-        </p>
         {expenses.length === 0 ? <p className="hint">No expenses this day.</p> : null}
         <ul className="account-lines">
-          {expenses.map((expense) => (
-            <li key={expense.id}>
+          {groupExpenses(expenses).map((expense) => (
+            <li key={expense.key}>
               <span>
-                {expense.employeeName ? `${expense.title} · ${expense.employeeName}` : expense.title}
-                {" · "}
-                {paidWith(expense)}
+                {expense.title}
+                <span className="who"> · {paidWith(expense)}</span>
               </span>
+              <span className="pair-line" />
               <strong>{formatRupees(expense.amountPaise)}</strong>
             </li>
           ))}
         </ul>
+        <p className="book-line">
+          <span>
+            Total <strong>{formatRupees(figures.expensePaise)}</strong>
+          </span>
+          <span>
+            GPay <strong>{formatRupees(figures.expenseUpiPaise)}</strong>
+          </span>
+          <span>
+            Cash <strong>{formatRupees(figures.expenseCashPaise)}</strong>
+          </span>
+        </p>
       </section>
       <section>
         <h2>Closing balance</h2>
@@ -811,21 +834,25 @@ function DayBook({
           <>
             <p className="book-row">
               <span>GPay</span>
+              <span className="pair-line" />
               <strong>{formatRupees(countedUpi)}</strong>
             </p>
             <p className="book-row">
               <span>Cash</span>
+              <span className="pair-line" />
               <strong>{formatRupees(countedCash)}</strong>
             </p>
           </>
         ) : (
           <>
             <label className="book-row">
-              GPay
+              <span>GPay</span>
+              <span className="pair-line" />
               <input inputMode="decimal" value={closingUpi} onChange={(event) => onClosingUpi(event.target.value)} onBlur={onSaveClosing} />
             </label>
             <label className="book-row">
-              Cash
+              <span>Cash</span>
+              <span className="pair-line" />
               <input inputMode="decimal" value={closingCash} onChange={(event) => onClosingCash(event.target.value)} onBlur={onSaveClosing} />
             </label>
           </>
@@ -838,10 +865,12 @@ function DayBook({
         <h2>Tally</h2>
         <p className="book-row">
           <span>Opening + business − expenses</span>
+          <span className="pair-line" />
           <strong>{formatRupees(expected)}</strong>
         </p>
         <p className="book-row">
           <span>{figures.cardPaise > 0 ? "Closing balance + card" : "Closing balance"}</span>
+          <span className="pair-line" />
           <strong>{formatRupees(compared)}</strong>
         </p>
         {openingInvalid ? (
@@ -861,9 +890,11 @@ function DayBook({
   );
 }
 
-function paidWith(expense: Pick<Expense, "payment" | "cashPaise" | "upiPaise">): string {
-  if (expense.payment === "upi") return "GPay";
-  if (expense.payment === "mix") return `Cash ${formatRupees(expense.cashPaise)} · GPay ${formatRupees(expense.upiPaise)}`;
+function paidWith(expense: { cashPaise: number; upiPaise: number }): string {
+  if (expense.cashPaise > 0 && expense.upiPaise > 0) {
+    return `Cash ${formatRupees(expense.cashPaise)} · GPay ${formatRupees(expense.upiPaise)}`;
+  }
+  if (expense.upiPaise > 0) return "GPay";
   return "Cash";
 }
 

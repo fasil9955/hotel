@@ -234,6 +234,19 @@ describe("admin office", () => {
     assert.equal(priced.json()[0].extraPaise, 50000);
     assert.equal(priced.json()[0].balancePaise, earned + 50000 - 10000);
 
+    const half = await app.inject({
+      method: "POST",
+      url: "/api/attendance",
+      payload: { employeeId, status: "half" },
+    });
+    assert.equal(half.statusCode, 200);
+    const halfIndex = half.json().days.indexOf(half.json().today);
+    assert.equal(half.json().rows[0].marks[halfIndex], "half");
+    const halfPay = await app.inject({ method: "GET", url: "/api/employee-accounts", headers });
+    const halfEarned = Math.round((800000 * 0.5) / days);
+    assert.equal(halfPay.json()[0].presentDays, 0.5);
+    assert.equal(halfPay.json()[0].earnedPaise, halfEarned);
+
     const removed = await app.inject({ method: "DELETE", url: `/api/employees/${employeeId}`, headers });
     assert.equal(removed.statusCode, 200);
     const after = await app.inject({ method: "GET", url: "/api/employee-accounts", headers });

@@ -9,6 +9,7 @@ import {
   type PaperWidth,
   type Settings,
 } from "../api";
+import { useConfirm } from "../confirm";
 
 type FormState = {
   hotelName: string;
@@ -43,6 +44,7 @@ export function Setup() {
   const [nextPin, setNextPin] = useState("");
   const [pinNote, setPinNote] = useState<Note>(idle);
   const [startupNote, setStartupNote] = useState<Note>(idle);
+  const { confirm, dialog } = useConfirm();
 
   useEffect(() => {
     let active = true;
@@ -129,6 +131,7 @@ export function Setup() {
 
   return (
     <>
+      {dialog}
       <section className="panel">
         <h1>Hotel</h1>
         <div className="fields">
@@ -270,7 +273,11 @@ export function Setup() {
             Save PIN
           </button>
           {form.pinSet ? (
-            <button type="button" className="text" onClick={() => void onPin(true)}>
+            <button
+              type="button"
+              className="text danger"
+              onClick={() => confirm("Remove the tablet PIN? Tablets will open without a PIN.", () => void onPin(true), "Remove PIN")}
+            >
               Remove PIN
             </button>
           ) : null}

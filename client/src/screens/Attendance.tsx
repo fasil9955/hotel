@@ -11,7 +11,7 @@ export function Attendance() {
       .catch((caught: unknown) => setError(text(caught)));
   }, []);
 
-  async function mark(employeeId: number, status: "present" | "absent") {
+  async function mark(employeeId: number, status: "present" | "half" | "absent") {
     setError("");
     try {
       setSheet(await markAttendance(employeeId, status));
@@ -22,6 +22,7 @@ export function Attendance() {
 
   const todayIndex = sheet ? sheet.days.indexOf(sheet.today) : -1;
   const present = sheet?.rows.filter((row) => row.marks[todayIndex] === "present").length ?? 0;
+  const half = sheet?.rows.filter((row) => row.marks[todayIndex] === "half").length ?? 0;
 
   return (
     <>
@@ -30,7 +31,7 @@ export function Attendance() {
         <h1>Attendance</h1>
         <p className="hint">
           {sheet
-            ? `${monthLabel(sheet.today)}. Today: ${present} present of ${sheet.rows.length}. Earlier days are shown, and only today can be marked.`
+            ? `${monthLabel(sheet.today)}. Today: ${present} present, ${half} half day, of ${sheet.rows.length}. P is a full day, H is half pay, A is absent. Only today can be marked.`
             : "Loading…"}
         </p>
         {sheet && sheet.rows.length === 0 ? <p className="lede">Add employees from Admin, then mark them here.</p> : null}
@@ -68,6 +69,14 @@ export function Attendance() {
                               </button>
                               <button
                                 type="button"
+                                aria-label={`Half day ${row.name}`}
+                                aria-pressed={markValue === "half"}
+                                onClick={() => void mark(row.employeeId, "half")}
+                              >
+                                H
+                              </button>
+                              <button
+                                type="button"
                                 aria-label={`Absent ${row.name}`}
                                 aria-pressed={markValue === "absent"}
                                 onClick={() => void mark(row.employeeId, "absent")}
@@ -77,7 +86,7 @@ export function Attendance() {
                             </span>
                           ) : (
                             <span className={markValue ? `cell-mark ${markValue}` : "cell-mark empty"}>
-                              {markValue === "present" ? "P" : markValue === "absent" ? "A" : ""}
+                              {markValue === "present" ? "P" : markValue === "half" ? "H" : markValue === "absent" ? "A" : ""}
                             </span>
                           )}
                         </td>

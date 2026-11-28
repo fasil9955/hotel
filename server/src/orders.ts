@@ -159,6 +159,16 @@ export function sendToKitchen(
   send: SendFn = sendToPrinter,
 ): Promise<{ order: OrderDetail; printed: boolean; message: string }> {
   const lines = parseSendLines(requested);
+  const skipKitchen = requested !== null && typeof requested === "object" && (requested as { kitchen?: unknown }).kitchen === false;
+  if (skipKitchen) {
+    if (lines.length === 0) throw new HttpError("Add a dish first.", 400);
+    addLines(db, orderId, lines, true);
+    return Promise.resolve({
+      order: getOrder(db, orderId),
+      printed: false,
+      message: "Added to the bill. No kitchen ticket.",
+    });
+  }
   if (lines.length) addLines(db, orderId, lines);
   return printUnprinted(db, orderId, send);
 }
@@ -254,6 +264,89 @@ export async function closeBill(
   );
   const printed = await printBill(db, bill, order, send);
   return { bill, ...printed };
+}
+
+export function editBill(db: DatabaseSync, billId: number, input: unknown): BillRecord {
+  const row = db
+    .prepare(
+      `SELECT bills.*, COALESCE(cancellation_requests.status, '') AS cancel_status
+       FROM bills
+       LEFT JOIN cancellation_requests ON cancellation_requests.bill_id = bills.id
+       WHERE bills.id = ?`,
+    )
+    .get(billId) as Record<string, number | string> | undefined;
+  if (!row) throw new HttpError("That bill was not found.", 404);
+  const bill = mapBill(row);
+  if (bill.cancellation === "accepted") throw new HttpError("This bill is cancelled.", 400);
+  const created = new Date(bill.createdAt);
+  const month = String(created.getMonth() + 1).padStart(2, "0");
+  const date = String(created.getDate()).padStart(2, "0");
+  const day = `${created.getFullYear()}-${month}-${date}`;
+  const closed = db.prepare("SELECT day FROM day_closes WHERE day = ?").get(day);
+  if (closed) throw new HttpError("This day is already closed.", 400);
+  const body = (input ?? {}) as { discountRupees?: unknown; payment?: unknown; lines?: unknown; add?: unknown };
+  if (body.payment !== undefined && body.payment !== "cash" && body.payment !== "upi") {
+    throw new HttpError("Choose cash or GPay.", 400);
+  }
+  const payment = body.payment === "upi" ? "upi" : body.payment === "cash" ? "cash" : bill.payment;
+  const order = getOrder(db, bill.orderId);
+  db.exec("BEGIN");
+  try {
+    if (Array.isArray(body.lines)) {
+      for (const entry of body.lines) {
+        const line = entry as { id?: unknown; qty?: unknown };
+        const id = Number(line.id);
+        const qty = Number(line.qty);
+        if (!order.lines.some((item) => item.id === id)) throw new HttpError("That item is not on this bill.", 400);
+        if (!Number.isInteger(qty) || qty < 0 || qty > 50) throw new HttpError("Quantity must be from 0 to 50.", 400);
+        if (qty === 0) db.prepare("DELETE FROM order_lines WHERE id = ? AND order_id = ?").run(id, order.id);
+        else db.prepare("UPDATE order_lines SET qty = ? WHERE id = ? AND order_id = ?").run(qty, id, order.id);
+      }
+    }
+    if (Array.isArray(body.add) && body.add.length > 0) {
+      const insert = db.prepare(
+        "INSERT INTO order_lines (order_id, item_name, price_paise, qty, note, kot_printed) VALUES (?, ?, ?, ?, '', 1)",
+      );
+      for (const entry of body.add) {
+        const line = entry as { itemId?: unknown; qty?: unknown };
+        const itemId = Number(line.itemId);
+        const qty = Number(line.qty);
+        if (!Number.isInteger(itemId) || itemId < 1) throw new HttpError("Choose a dish.", 400);
+        if (!Number.isInteger(qty) || qty < 1 || qty > 50) throw new HttpError("Quantity must be from 1 to 50.", 400);
+        const item = db
+          .prepare("SELECT name, price_paise, parcel_price_paise, available FROM items WHERE id = ?")
+          .get(itemId) as { name: string; price_paise: number; parcel_price_paise: number; available: number } | undefined;
+        if (!item || item.available !== 1) throw new HttpError("That dish is off the menu.", 400);
+        const price = order.parcel ? item.parcel_price_paise : item.price_paise;
+        insert.run(order.id, item.name, price, qty);
+      }
+    }
+    const updated = getOrder(db, order.id);
+    if (updated.lines.length === 0) throw new HttpError("A bill needs at least one item.", 400);
+    const discount =
+      body.discountRupees === undefined ? bill.discountPaise : body.discountRupees === "" ? 0 : rupeesToPaise(body.discountRupees);
+    if (typeof discount !== "number") throw new HttpError(discount.error, 400);
+    const tax = addGst(updated.totalPaise, bill.gstPercent);
+    if (discount > tax.totalPaise) throw new HttpError("The discount is larger than the bill.", 400);
+    db.prepare(
+      `UPDATE bills
+       SET subtotal_paise = ?, discount_paise = ?, taxable_paise = ?, cgst_paise = ?, sgst_paise = ?, total_paise = ?, payment = ?
+       WHERE id = ?`,
+    ).run(updated.totalPaise, discount, tax.taxablePaise, tax.cgstPaise, tax.sgstPaise, tax.totalPaise - discount, payment, bill.id);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  const saved = db
+    .prepare(
+      `SELECT bills.*, COALESCE(cancellation_requests.status, '') AS cancel_status
+       FROM bills
+       LEFT JOIN cancellation_requests ON cancellation_requests.bill_id = bills.id
+       WHERE bills.id = ?`,
+    )
+    .get(bill.id) as Record<string, number | string>;
+  return mapBill(saved);
 }
 
 export async function reprintBill(db: DatabaseSync, billId: number, send: SendFn = sendToPrinter): Promise<PrintResult> {
@@ -354,11 +447,12 @@ function addLines(
   db: DatabaseSync,
   orderId: number,
   lines: Array<{ itemId: number; qty: number; note: string }>,
+  markPrinted = false,
 ): void {
   const order = getOrder(db, orderId);
   if (order.status !== "open") throw new HttpError("This table is already billed.", 400);
   const insert = db.prepare(
-    "INSERT INTO order_lines (order_id, item_name, price_paise, qty, note, kot_printed) VALUES (?, ?, ?, ?, ?, 0)",
+    "INSERT INTO order_lines (order_id, item_name, price_paise, qty, note, kot_printed) VALUES (?, ?, ?, ?, ?, ?)",
   );
   db.exec("BEGIN");
   try {
@@ -370,7 +464,7 @@ function addLines(
         | undefined;
       if (!item || item.available !== 1) throw new HttpError("That dish is off the menu.", 400);
       const price = order.parcel ? item.parcel_price_paise : item.price_paise;
-      insert.run(orderId, item.name, price, line.qty, line.note);
+      insert.run(orderId, item.name, price, line.qty, line.note, markPrinted ? 1 : 0);
     }
     db.exec("COMMIT");
   } catch (error) {
